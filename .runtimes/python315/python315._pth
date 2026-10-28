@@ -1,0 +1,5 @@
+python315.zip
+.
+Lib/site-packages
+../..
+import site

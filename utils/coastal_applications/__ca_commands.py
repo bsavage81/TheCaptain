@@ -17,8 +17,12 @@ class CoastalAppCMD(commands.Cog):
     )
     async def applycoastal(self, interaction: discord.Interaction[Any]):
         channel = interaction.channel
+        guild = interaction.guild
 
-        if channel is None or channel.id != self.bot.settings["CoastalMRP"]:
+        if channel is None or (
+            channel.id != self.bot.settings["CoastalMRP"]
+            and (guild is None or guild.id != self.bot.settings["Coastal"])
+        ):
             noGoAway = discord.Embed(
                 title="Woah Woah Woah, Slow Down There Buddy!",
                 description="This belongs over in Coastal Craft, no one here wants to hear it here!",
@@ -77,6 +81,10 @@ class CoastalAppCMD(commands.Cog):
 async def setup(bot):
     cog = CoastalAppCMD(bot)
     for command in cog.get_app_commands():
-        ids = [bot.settings["MRP"]] if command.name == "applycoastal" else [bot.settings["PBtest"], bot.settings["Coastal"]]
+        ids = (
+            [bot.settings["MRP"]]
+            if command.name == "applycoastal"
+            else [bot.settings["PBtest"], bot.settings["Coastal"]]
+        )
         command._guild_ids = list(dict.fromkeys(ids))
     await bot.add_cog(cog)

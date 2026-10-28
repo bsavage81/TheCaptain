@@ -1,0 +1,61 @@
+{
+  "format": 1,
+  "database": "s103627_The_Captains_Log",
+  "tables": {
+    "botdata": {
+      "ddl": "CREATE TABLE `botdata` (\n  `id` int(11) NOT NULL AUTO_INCREMENT,\n  `persistent_views` tinyint(1) NOT NULL,\n  `prefix` text NOT NULL,\n  `bot_spam_channel_coastal` bigint(20) NOT NULL,\n  `bot_spam_channel_aurafall` bigint(20) NOT NULL,\n  `bot_type` text NOT NULL,\n  `bot_id` bigint(20) NOT NULL,\n  `server_id_aurafall` bigint(20) NOT NULL,\n  `server_id_coastal` bigint(20) NOT NULL,\n  PRIMARY KEY (`id`)\n) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci",
+      "columns": [
+        "id",
+        "persistent_views",
+        "prefix",
+        "bot_spam_channel_coastal",
+        "bot_spam_channel_aurafall",
+        "bot_type",
+        "bot_id",
+        "server_id_aurafall",
+        "server_id_coastal"
+      ],
+      "rows": [
+        [
+          1,
+          1,
+          "%",
+          415213466522091542,
+          411566709359509504,
+          "Stable",
+          824637706734534687,
+          298995889551310848,
+          298995889551310848
+        ],
+        [
+          2,
+          1,
+          "&",
+          415213466522091542,
+          411566709359509504,
+          "BETA",
+          492744154317717524,
+          298995889551310848,
+          305767872410419211
+        ]
+      ]
+    },
+    "administrators": {
+      "ddl": "CREATE TABLE `administrators` (\n  `id` int(11) NOT NULL AUTO_INCREMENT,\n  `discordID` text DEFAULT NULL,\n  `discord_name` text NOT NULL,\n  `TierLevel` int(11) NOT NULL,\n  PRIMARY KEY (`id`),\n  UNIQUE KEY `administrators_discordID` (`discordID`) USING HASH\n) ENGINE=InnoDB AUTO_INCREMENT=10 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci",
+      "columns": [
+        "id",
+        "discordID",
+        "discord_name",
+        "TierLevel"
+      ],
+      "rows": [
+        [
+          2,
+          "306070011028439041",
+          "bsavage81",
+          4
+        ]
+      ]
+    }
+  }
+}

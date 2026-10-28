@@ -1,0 +1,11 @@
+{
+  "runtime_database_initialization": "passed",
+  "production_row_id": 1,
+  "production_prefix": "%",
+  "administrator_check_matches_saved_permission": true,
+  "administrator_data_unchanged": true,
+  "encrypted_connection": "self_signed_explicitly_approved",
+  "live_cleanup": "completed",
+  "original_database_modified": false,
+  "bot_deployment_or_restart": false
+}
