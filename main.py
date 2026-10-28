@@ -40,6 +40,7 @@ class TheCaptain(commands.Bot):
         await self.sheets.initialize()
         self.application_content = self.sheets.application_content
         self.poi_content = self.sheets.poi_content
+        self.guide_content = self.sheets.guide_content
         for extension in EXTENSIONS:
             if extension not in self.extensions:
                 await self.load_extension(extension)

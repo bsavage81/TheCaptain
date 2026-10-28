@@ -11,45 +11,10 @@ class BaseModel(Model):
 
 
 class BotData(BaseModel):
-    """
-    BotData:
-    Information used across the bot.
+    """Legacy-compatible storage; production reads row 1.prefix only.
 
-    `id`: AutoField()
-    Database Entry ID (ALWAYS QUERY 1)
-
-    `last_question_posted`: DateTimeField()
-    Last time a question was posted
-
-    `persistent_views`: BooleanField()
-    Whether or not persistent views are enabled
-
-    `prefix`: TextField()
-    Bot prefix
-
-    `blacklist_response_channel`: BigIntegerField()
-    Channel ID for blacklist responses
-
-    `question_suggest_channel`: BigIntegerField()
-    Channel ID for question suggestions
-
-    `bot_spam_channel`: BigIntegerField()
-    Channel ID for bot spam
-
-    `realm_channel_response`: BigIntegerField()
-    Channel ID for realm channel responses
-
-    `bot_type`: TextField()
-    Bot type
-
-    `other_bot_id`: BigIntegerField()
-    Other bot ID
-
-    `bot_id`: BigIntegerField()
-    Bot ID
-
-    `server_id`: BigIntegerField()
-    Server ID
+    Other columns remain mapped for safe inserts and rollback. They are not evidence
+    of active features and may not be removed without a database consumer audit.
     """
     id = AutoField()
     persistent_views = BooleanField(default=False)
@@ -90,15 +55,13 @@ tables = {"administrators": Administrators, "botdata": BotData}
 
 
 def initialize_database(settings, backend=None):
-    backend = backend if backend is not None else MySQLDatabase(
-        settings["database_schema"], host=settings["database_ip"],
-        port=int(settings.get("database_port", 3306)),
-        user=settings["database_username"], password=settings["database_password"])
+    if settings.get("bot_type", "STABLE") != "STABLE":
+        raise ValueError("Retired deployment configuration cannot initialize production")
+    backend = backend if backend is not None else make_database(settings)
     db.initialize(backend)
     with backend.connection_context():
         backend.create_tables(list(tables.values()), safe=True)
-        row_id = {"STABLE": 1, "BETA": 2}[settings.get("bot_type", "STABLE")]
-        row, _ = BotData.get_or_create(id=row_id, defaults={"bot_type": settings.get("bot_type", "STABLE")})
+        row = ensure_production_row()
         if not Administrators.select().exists():
             for owner in settings.get("owner_ids", [306070011028439041]):
                 Administrators.get_or_create(discordID=owner, defaults={"TierLevel": 4})
@@ -109,3 +72,21 @@ def is_administrator(user_id, tier=3):
     with db.connection_context():
         return Administrators.select().where(
             (Administrators.discordID == user_id) & (Administrators.TierLevel >= tier)).exists()
+
+
+def make_database(settings):
+    return MySQLDatabase(
+        settings["database_schema"], host=settings["database_ip"],
+        port=int(settings.get("database_port", 3306)),
+        user=settings["database_username"], password=settings["database_password"])
+
+
+def ensure_production_row():
+    """Preserve row 1 exactly; never infer production from a retired deployment."""
+    row = BotData.get_or_none(BotData.id == 1)
+    if row is not None:
+        return row
+    if BotData.select().exists():
+        raise ValueError("Production BotData row 1 is missing in a nonempty table. Restore the verified production row before startup; no legacy row was copied.")
+    row, _ = BotData.get_or_create(id=1, defaults={"bot_type": "STABLE"})
+    return row

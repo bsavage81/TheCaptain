@@ -50,7 +50,7 @@ async def addpoi_end_returngateway(self, interaction, x_coord, z_coord):
         color=0x336F75)
     embed1.set_thumbnail(
         url=
-        "https://cdn.discordapp.com/attachments/488792053002534920/1157338182392741999/coastal_logo_final_s9.png"
+        self.bot.settings.get("logo_url")
     )
     embed1.add_field(name="X_Coord", value=str(x_coord), inline=True)
     embed1.add_field(name="Z_Coord", value=str(z_coord), inline=True)
@@ -120,7 +120,7 @@ async def addpoi_endcity_claim(self, interaction, x_coord, z_coord):
         color=0x336F75)
     embed1.set_thumbnail(
         url=
-        "https://cdn.discordapp.com/attachments/488792053002534920/1157338182392741999/coastal_logo_final_s9.png"
+        self.bot.settings.get("logo_url")
     )
     embed1.add_field(name="X_Coord", value=str(x_coord), inline=True)
     embed1.add_field(name="Z_Coord", value=str(z_coord), inline=True)
@@ -219,7 +219,7 @@ async def addpoi_end(self, interaction, x_coord, z_coord):
         color=0x336F75)
     embed1.set_thumbnail(
         url=
-        "https://cdn.discordapp.com/attachments/488792053002534920/1157338182392741999/coastal_logo_final_s9.png"
+        self.bot.settings.get("logo_url")
     )
     embed1.add_field(name="X_Coord", value=str(x_coord), inline=True)
     embed1.add_field(name="Z_Coord", value=str(z_coord), inline=True)
@@ -320,7 +320,7 @@ async def addpoi_nether(self, interaction, x_coord, z_coord):
         color=0x336F75)
     embed1.set_thumbnail(
         url=
-        "https://cdn.discordapp.com/attachments/488792053002534920/1157338182392741999/coastal_logo_final_s9.png"
+        self.bot.settings.get("logo_url")
     )
     embed1.add_field(name="X_Coord", value=str(x_coord), inline=True)
     embed1.add_field(name="Z_Coord", value=str(z_coord), inline=True)
@@ -421,7 +421,7 @@ async def addpoi_overworld(self, interaction, x_coord, z_coord):
         color=0x336F75)
     embed1.set_thumbnail(
         url=
-        "https://cdn.discordapp.com/attachments/488792053002534920/1157338182392741999/coastal_logo_final_s9.png"
+        self.bot.settings.get("logo_url")
     )
     embed1.add_field(name="X_Coord", value=str(x_coord), inline=True)
     embed1.add_field(name="Z_Coord", value=str(z_coord), inline=True)

@@ -5,27 +5,44 @@ from discord import ButtonStyle, ui
 import discord
 from types import CoroutineType
 from typing import Union, List
-from .__constants import ROOT, LEGACY_IDS
+from .__constants import ROOT, LEGACY_IDS, SHEET_DEFAULTS, GUIDE_DEFAULTS, LOGO_URL
 
 
 def load_settings(path=None, environ=None):
     environ = os.environ if environ is None else environ
     path = ROOT / "botconfig.json" if path is None else path
     config = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
-    config = {**LEGACY_IDS, **config}
-    for key in ("token", "database_ip", "database_port", "database_username", "database_password", "database_schema", "bot_type", "sentry_dsn"):
+    config = {**LEGACY_IDS, **SHEET_DEFAULTS, **config}
+    for key in ("token", "database_ip", "database_port", "database_username", "database_password", "database_schema", "bot_type"):
         if key in environ:
             config[key] = environ[key]
-    config.setdefault("bot_type", "STABLE")
-    if config["bot_type"] not in ("STABLE", "BETA"):
-        raise ValueError("bot_type must be STABLE or BETA")
-    required = ("MRP", "PBtest", "Coastal", "CoastalMRP", "CoastalApplications", "CoastalOPTeam", "CoastalMapUpdates")
+    # Compatibility guard: never repurpose a retired instance as production silently.
+    if config.pop("bot_type", "STABLE") != "STABLE":
+        raise ValueError("Retired bot_type setting: this release runs production row 1 only. Stop the retired deployment; remove bot_type from the production configuration.")
+    config.pop("sentry_dsn", None)
+    required = ("MRP", "Coastal", "CoastalMRP", "CoastalApplications", "CoastalOPTeam", "CoastalMapUpdates")
     for key in required:
         if not isinstance(config.get(key), int) or config[key] <= 0:
             raise ValueError(f"Configure a positive integer for {key}")
+    if config.get("PBtest") is not None and (type(config["PBtest"]) is not int or config["PBtest"] <= 0):
+        raise ValueError("PBtest must be a positive guild ID when supplied; omit it if unused")
+    for key in SHEET_DEFAULTS:
+        if not isinstance(config[key], str) or not config[key].strip():
+            raise ValueError(f"Configure a nonempty title for {key}")
+    for key in ("application_sheet_id", "markers_sheet_id"):
+        value = config.get(key)
+        if value is not None and not isinstance(value, str):
+            raise ValueError(f"{key} must be a spreadsheet key string")
+        config[key] = value.strip() if value else None
+    for key, value in GUIDE_DEFAULTS.items():
+        config.setdefault(f"guide_{key}", value)
+    config.setdefault("logo_url", LOGO_URL)
     config.setdefault("OPTeamRole", "OP Team")
     config.setdefault("owner_ids", [306070011028439041])
-    config["credentials_path"] = str(ROOT / config.get("credentials_path", "creds.json"))
+    credentials_path = config.get("credentials_path", "creds.json")
+    if not isinstance(credentials_path, str) or not credentials_path.strip():
+        raise ValueError("credentials_path must be a nonempty path")
+    config["credentials_path"] = str((ROOT / credentials_path).resolve())
     return config
 
 
@@ -129,3 +146,7 @@ class ButtonHandler(ui.Button):
             )
 
 
+
+
+def coastal_command_guilds(settings):
+    return list(dict.fromkeys(g for g in (settings.get("PBtest"), settings["Coastal"]) if g))

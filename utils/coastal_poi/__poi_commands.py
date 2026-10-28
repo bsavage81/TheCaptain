@@ -1,4 +1,4 @@
-import asyncio
+from utils.core_features.__common import coastal_command_guilds
 import discord
 from discord import app_commands
 from discord.ext import commands
@@ -40,5 +40,5 @@ class CoastalPOICMD(commands.Cog):
 async def setup(bot):
     cog = CoastalPOICMD(bot)
     for command in cog.get_app_commands():
-        command._guild_ids = list(dict.fromkeys([bot.settings["PBtest"], bot.settings["Coastal"]]))
+        command._guild_ids = list(dict.fromkeys(coastal_command_guilds(bot.settings)))
     await bot.add_cog(cog)

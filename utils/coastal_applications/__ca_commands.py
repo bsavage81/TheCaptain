@@ -1,3 +1,4 @@
+from utils.core_features.__common import coastal_command_guilds
 from typing import Any
 import discord
 from discord import app_commands
@@ -77,6 +78,6 @@ class CoastalAppCMD(commands.Cog):
 async def setup(bot):
     cog = CoastalAppCMD(bot)
     for command in cog.get_app_commands():
-        ids = [bot.settings["MRP"]] if command.name == "applycoastal" else [bot.settings["PBtest"], bot.settings["Coastal"]]
+        ids = [bot.settings["MRP"]] if command.name == "applycoastal" else coastal_command_guilds(bot.settings)
         command._guild_ids = list(dict.fromkeys(ids))
     await bot.add_cog(cog)

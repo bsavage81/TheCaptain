@@ -1,9 +1,62 @@
 import asyncio
 import discord
+from dataclasses import dataclass
+from utils.core_features.__constants import REALM_NAME, GUIDE_DEFAULTS
+
+
+@dataclass(frozen=True)
+class GuideContent:
+    web_url: str = ""
+    pdf_url: str = ""
+    question: str = ""
+    answer: str = ""
+    answer_match: str = "contains"
+
+    def accepts(self, response):
+        response = response.strip().casefold()
+        expected = self.answer.casefold()
+        if not expected:
+            return False
+        return expected in response if self.answer_match == "contains" else response == expected
+
+    @property
+    def configured(self):
+        return bool((self.web_url or self.pdf_url) and self.question and self.answer)
+
+
+def load_guide_content(settings, questions=None):
+    """Guide cells are opt-in; POI B1:B6 is never assumed to be guide content."""
+    import re
+    values = {}
+    cells = settings.get("guide_cells", {})
+    if not isinstance(cells, dict) or set(cells) - {"web_url", "pdf_url", "question", "answer"}:
+        raise ValueError("guide_cells supports web_url, pdf_url, question and answer only")
+    for key in ("web_url", "pdf_url", "question", "answer"):
+        value = settings.get(f"guide_{key}", GUIDE_DEFAULTS[key]) or ""
+        if key in cells:
+            address = cells[key]
+            if not isinstance(address, str) or not re.fullmatch(r"[A-Z]+[1-9][0-9]*", address):
+                raise ValueError("Guide cells must be explicit uppercase A1 addresses")
+            if questions is None:
+                raise ValueError("Guide cell selection requires the markers Questions worksheet")
+            value = questions.acell(address).value or ""
+        if not isinstance(value, str):
+            raise ValueError("Guide settings must be strings")
+        values[key] = value.strip()
+    for key in ("web_url", "pdf_url"):
+        if values[key] and not values[key].startswith(("https://", "http://")):
+            raise ValueError("Guide links must use HTTP or HTTPS")
+    match = settings.get("guide_answer_match", GUIDE_DEFAULTS["answer_match"])
+    if match not in ("contains", "exact"):
+        raise ValueError("guide_answer_match must be contains or exact")
+    return GuideContent(**values, answer_match=match)
 
 
 async def run_guide(cog, interaction):
     bot = cog.bot
+    if not bot.guide_content.configured:
+        await interaction.response.send_message("Season 10 guide content is awaiting operator configuration. Contact an OP.", ephemeral=True)
+        return
     guild = bot.get_guild(bot.settings["Coastal"])
     role = guild.get_role(bot.settings["CoastalGuideRole"]) if guild else None
     active = guild.get_role(bot.settings["CoastalActiveRole"]) if guild else None
@@ -31,30 +84,25 @@ async def converse(bot, channel, author, role, realmactiverole, responsechannel)
     def check(message):
         return message.content is not None and message.channel == channel and message.author.id == author.id
 
+    content = bot.guide_content
+    if not content.configured:
+        raise ValueError("Season 10 guide is not configured")
     embed = discord.Embed(
-        title="Season 9 Guide Agreement",
+        title="Season 10 Guide Agreement",
         description="Read the guide, and then answer the questions that follow.",
         color=0x336F75,
     )
-    embed.add_field(
-        name="Online version of the guide",
-        value="https://bit.ly/CoastalPlayersGuide9",
-        inline=False,
-    )
-    embed.add_field(
-        name="PDF version of the guide",
-        value="https://bit.ly/Coastal9PGpdf",
-        inline=False,
-    )
-    embed.set_thumbnail(
-        url="https://cdn.discordapp.com/attachments/488792053002534920/1157338182392741999/coastal_logo_final_s9.png"
-    )
+    if content.web_url:
+        embed.add_field(name="Online version of the guide", value=content.web_url, inline=False)
+    if content.pdf_url:
+        embed.add_field(name="PDF version of the guide", value=content.pdf_url, inline=False)
+    embed.set_thumbnail(url=bot.settings.get("logo_url"))
     await channel.send(embed=embed)
-    await channel.send("What drink do the OPs think is good?")
+    await channel.send(content.question)
     try:
         while True:
             answer = await bot.wait_for("message", timeout=60.0, check=check)
-            if answer.content.strip().casefold() == "cappuccino":
+            if content.accepts(answer.content):
                 await channel.send("Great Job!!!")
                 break
             await channel.send("Wrong! Try again: ")
@@ -66,9 +114,9 @@ async def converse(bot, channel, author, role, realmactiverole, responsechannel)
     if answer.content.strip().casefold() == "yes":
         await author.add_roles(role)
         await author.add_roles(realmactiverole)
-        await channel.send("Great! Have fun Playing Coastal Craft 9: Sakura Shores")
-        embed = discord.Embed(title="Season 9 Guide Agreement", description=author.name + " has agreed to the season 9 guide!", color=0x000800)
-        embed.set_thumbnail(url="https://cdn.discordapp.com/attachments/488792053002534920/1157338182392741999/coastal_logo_final_s9.png")
+        await channel.send(f"Great! Have fun Playing {REALM_NAME}")
+        embed = discord.Embed(title="Season 10 Guide Agreement", description=author.name + " has agreed to the season 10 guide!", color=0x000800)
+        embed.set_thumbnail(url=bot.settings.get("logo_url"))
         await responsechannel.send(embed=embed)
     else:
         await channel.send("Please get with an OP to discuss your concerns")
