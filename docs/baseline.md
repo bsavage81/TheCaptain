@@ -3,7 +3,11 @@
 Remote heads rechecked before implementation on October 27, 2026 (America/Chicago):
 TheCaptain main `24535b991e83732b26ce98a7be80adb76ff748cb`;
 PortalBot dev `34ec7f696c4c253ca19846e4a40a84976d343ea8`.
-Both matched the requested snapshots. Captain's local origin is still
+Both matched the requested snapshots. The read-only PortalBot checkout is on local main
+`18dfeeed7571a8ad959d385e296b270c73c0f5e0`; the requested dev commit is present locally.
+Its core and management entry points were inspected directly with `git show` and their layout
+conventions agree with the local reference. Later main-only bootstrap/error changes were not
+copied into Captain. Captain's local origin is still
 `https://github.com/bsavage81/TheOldKing.git`; it was deliberately not rewritten or pushed.
 Captain and PortalBot started with no working-tree changes. No applicable AGENTS.md was found
 in either repository or the ancestor directories. PortalBot was used read-only.
