@@ -127,6 +127,9 @@ are dropped. See the database runbook before code rollout: the older runtime nee
 
 After approved configuration review, start `python /absolute/path/to/TheCaptain/main.py`.
 Database and Sheets initialization are explicit; extensions register once in a fixed order.
+On ready, the console prints Captain's ASCII banner with the live account/wrapper version, current
+Git commit, configured database host, server-local time and cached guild/member counts. Missing
+Git metadata displays unknown without blocking readiness; database credentials are never printed.
 There is no automatic slash-command sync. Tier-3 manual `sync <guild|global|all>` and upstream
 owner-only jishaku are preserved. Application views/modals expire in five minutes and lose state
 on restart; the retained `persistent_views` database field no longer drives registration.
