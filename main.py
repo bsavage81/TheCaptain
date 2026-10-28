@@ -33,7 +33,6 @@ class TheCaptain(commands.Bot):
         self.admin_check = admin_check
         self.help_command = None
         self._start_time = time.time()
-        self._views_registered = False
 
     async def setup_hook(self):
         row = await asyncio.to_thread(self.database_initializer, self.settings)
@@ -44,9 +43,6 @@ class TheCaptain(commands.Bot):
         for extension in EXTENSIONS:
             if extension not in self.extensions:
                 await self.load_extension(extension)
-        if not self._views_registered:
-            # No state-free persistent views remain; active application views are temporary.
-            self._views_registered = True
 
     async def on_ready(self):
         logging.getLogger(__name__).info("TheCaptain ready")

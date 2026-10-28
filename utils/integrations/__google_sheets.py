@@ -25,6 +25,7 @@ class SheetsService:
             from oauth2client.service_account import ServiceAccountCredentials
             creds = ServiceAccountCredentials.from_json_keyfile_name(self.settings["credentials_path"], SCOPES)
             client = gspread.authorize(creds)
+        client.set_timeout(30)
         self.applications = client.open("CCS9 Realm Application").sheet1
         markers = client.open("Coastal Markers")
         self.markers = {name: markers.worksheet(name) for name in ("Overworld", "Nether", "End")}
@@ -47,8 +48,10 @@ class SheetsService:
                     raise
 
     async def initialize(self):
-        if not self.ready:
-            await self._run(self._connect)
+        def connect_once():
+            if not self.ready:
+                self._connect()
+        await self._run(connect_once)
 
     @staticmethod
     def _insert(sheet, row, position):

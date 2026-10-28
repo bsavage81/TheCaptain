@@ -1,4 +1,5 @@
 import asyncio
+import discord
 
 
 async def wait_answer(bot, channel, author):
@@ -9,9 +10,6 @@ async def wait_answer(bot, channel, author):
     except asyncio.TimeoutError:
         await channel.send("I grow tired of waiting, try again later...")
         raise
-
-
-import discord
 
 
 async def addpoi_end_returngateway(self, interaction, x_coord, z_coord):
@@ -28,12 +26,9 @@ async def addpoi_end_returngateway(self, interaction, x_coord, z_coord):
         dnick = str(author.name)
     else:
         dnick = str(author.display_name)
-    # Answer Check
-    def check(m):
-        return m.content is not None and m.channel == channel and m.author == author
     
     
-    await interaction.response.send_message("Marker added")
+    await interaction.response.send_message("Adding marker...")
 
     # Spreadsheet Data
       
@@ -86,9 +81,6 @@ async def addpoi_endcity_claim(self, interaction, x_coord, z_coord):
         dnick = str(author.name)
     else:
         dnick = str(author.display_name)
-    # Answer Check
-    def check(m):
-        return m.content is not None and m.channel == channel and m.author == author
     
     await interaction.response.send_message("Complete the Form")
 
@@ -159,9 +151,6 @@ async def addpoi_end(self, interaction, x_coord, z_coord):
         dnick = str(author.name)
     else:
         dnick = str(author.display_name)
-    # Answer Check
-    def check(m):
-        return m.content is not None and m.channel == channel and m.author == author
     
     await interaction.response.send_message("Complete the Form")
 
@@ -264,9 +253,6 @@ async def addpoi_nether(self, interaction, x_coord, z_coord):
         dnick = str(author.name)
     else:
         dnick = str(author.display_name)
-    # Answer Check
-    def check(m):
-        return m.content is not None and m.channel == channel and m.author == author
     
     await interaction.response.send_message("Complete the Form")
 
@@ -368,9 +354,6 @@ async def addpoi_overworld(self, interaction, x_coord, z_coord):
         dnick = str(author.name)
     else:
         dnick = str(author.display_name)
-    # Answer Check
-    def check(m):
-        return m.content is not None and m.channel == channel and m.author == author
     
     await interaction.response.send_message("Complete the Form")
 
@@ -474,6 +457,7 @@ async def run_poi(cog, interaction, x_coord, z_coord, operation):
     except asyncio.TimeoutError:
         return
     except Exception:
-        await interaction.followup.send("POI operation failed. A write or notification may have completed; contact an OP before retrying.", ephemeral=True)
+        send = interaction.followup.send if interaction.response.is_done() else interaction.response.send_message
+        await send("POI operation failed. A write or notification may have completed; contact an OP before retrying.", ephemeral=True)
     finally:
         sessions.discard(key)
