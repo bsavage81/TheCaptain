@@ -34,4 +34,6 @@ root `workflows/` security examples were removed after reference checks. Active 
 
 Database completion adds `migrations/cleanup_botdata.py` for reversible settings-table cleanup and
 rollback, with historical synthetic schema fixtures in `tests/legacy_database.py` and migration
-regressions in `tests/test_database_cleanup.py`. The runtime BotData model now contains id/prefix only.
+regressions in `tests/test_database_cleanup.py`. The runtime BotData model now retains id/prefix and the three owner-requested bot/Coastal IDs.
+
+`migrations/restore_coastal_ids.py` additively upgrades an earlier two-column cleanup using archived production values, without overwriting conflicts.

@@ -15,12 +15,12 @@ permission changes still need a live inventory. The authorized new-database clea
 | `botdata.id` | Configuration identity | Runtime always selects 1; migration checks 1/2 presence | Keep primary key; never infer production from row 2 |
 | `botdata.prefix` | Prefix for sync/jishaku/legacy commands | `main.setup_hook` | Keep production value unchanged |
 | `botdata.persistent_views` | Old view-registration flag | Historical schema only; no runtime behavior | Archived by reversible cleanup; absent from clean runtime model |
-| `botdata.bot_spam_channel_coastal` | Historical Coastal routing | Historical schema only; actual routing uses JSON | Archived by reversible cleanup; review external consumers before live rename |
+| `botdata.bot_spam_channel_coastal` | Retained Coastal channel identifier | Owner-requested model/storage; JSON still routes messages | Keep active, restored from original row 1 |
 | `botdata.bot_spam_channel_aurafall` | Historical Aurafall routing | Historical schema only | Archived by reversible cleanup; verify external consumers first |
 | `botdata.bot_type` | Retired row routing metadata | Historical schema only; no row selection | Archived unchanged; no runtime deployment routing |
-| `botdata.bot_id` | Historical Discord bot identity | Historical schema only | Archived unchanged; verify operational consumers first |
+| `botdata.bot_id` | Retained Discord bot identity | Owner-requested model/storage | Keep active, restored from original row 1 |
 | `botdata.server_id_aurafall` | Historical Aurafall guild | Historical schema only | Archived by reversible cleanup; verify external consumers first |
-| `botdata.server_id_coastal` | Historical Coastal guild | Historical schema only; JSON is current source | Archived by reversible cleanup; verify external consumers first |
+| `botdata.server_id_coastal` | Retained Coastal guild identifier | Owner-requested model/storage; JSON still controls scope | Keep active, restored from original row 1 |
 | `botdata` row 1 | Previous STABLE production configuration | Previously STABLE→1; now explicit singleton | Keep production id/prefix active; preserve every original field in the legacy archive |
 | `botdata` row 2 | Previous BETA configuration | Read-only presence check in migration; never used for startup | Retained in captain_botdata_legacy, never selected by runtime |
 | Other `botdata` rows | Unknown/historical | Not selected by current runtime | Uncertain; preserve and inventory externally |
@@ -42,13 +42,14 @@ not reliable SQL table identifiers; no DROP templates are generated for inferred
 
 The runtime model now retains only:
 
-- `botdata`: `id` AutoField/primary key and `prefix` TextField; active singleton row 1.
+- `botdata`: `id` AutoField/primary key, `prefix` TextField, and BigInteger `bot_id`,
+  `bot_spam_channel_coastal`, `server_id_coastal`; active singleton row 1.
 - `administrators`: `id` AutoField, unique BigInteger `discordID`, Integer `TierLevel`.
 - All existing administrator records; no permission/tier policy change.
 
 `migrations/cleanup_botdata.py` moves the **entire original BotData table**, including all retired
-rows and unused typed columns, to `captain_botdata_legacy`. The new active table receives only the
-exact production row-1 ID/prefix. No row, column value or unknown table is deleted. The archive
+rows and unused typed columns, to `captain_botdata_legacy`. The new active table receives the
+exact production row-1 prefix and retained identifiers. No row, column value or unknown table is deleted. The archive
 is retained for rollback and is not a substitute for an independent verified database backup.
 Legacy models exist only in synthetic test fixtures, not in runtime startup.
 
@@ -137,3 +138,19 @@ Foreign keys/views/triggers are rejected because table renaming can retarget the
 Approval prerequisites are a verified backup/restore, live inventory, external-consumer sign-off,
 a bounded maintenance plan, explicit object names and a reviewed restoration path. The owner authorized the known settings cleanup, which this tool implements reversibly.
 Deleting recovery/history data or guessing unknown live table ownership is not part of that tool.
+
+## Owner-requested retained identifiers
+
+Following the initial cleanup, the owner requested bot_id and the two Coastal IDs be retained.
+The live new database now contains bot_id, bot_spam_channel_coastal and server_id_coastal with their
+exact original row-1 values. Administrators, prefix and the archive were verified unchanged.
+The runtime model and future cleanup copy all five retained fields. The remaining retired settings
+stay archived. JSON routing remains authoritative; merely retaining these values does not change
+command scope or notification destinations.
+
+Earlier two-column installations use `migrations.restore_coastal_ids` (plan by default, `--apply`
+explicitly). It validates archive values, rejects conflicts, adds nullable BIGINT columns for safe
+recovery after interrupted DDL, and fills only missing values on row 1. Retries preserve already
+restored values. Fresh schemas use the model's non-null BIGINT/default-zero definitions. No existing
+record or legacy archive is deleted. The original full-table rollback continues to support both
+older two-column and current five-column clean schemas.

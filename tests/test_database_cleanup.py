@@ -28,8 +28,8 @@ def test_cleanup_roundtrip_preserves_every_record(tmp_path):
     assert result["state"]=="planned" and not result["applied"]
     assert cleanup(backend,**APPLY)["legacy_rows_archived"]==2
     with backend.connection_context():
-        assert {c.name for c in backend.get_columns("botdata")}=={"id","prefix"}
-        assert backend.execute_sql("SELECT * FROM botdata").fetchall()==[(1,"⚓!")]
+        assert {c.name for c in backend.get_columns("botdata")}=={"id","prefix","bot_id","bot_spam_channel_coastal","server_id_coastal"}
+        assert backend.execute_sql("SELECT * FROM botdata").fetchall()==[(1,"⚓!",0,0,123)]
         assert backend.execute_sql(f"SELECT * FROM {ARCHIVE} ORDER BY id").fetchall()==original
         assert list(database.Administrators.select().dicts())==admins
     assert cleanup(backend,**APPLY)["state"]=="already_clean"
@@ -39,7 +39,7 @@ def test_cleanup_roundtrip_preserves_every_record(tmp_path):
     assert cleanup(backend,rollback=True,**APPLY)["state"]=="already_rolled_back"
     with backend.connection_context():
         assert backend.execute_sql("SELECT * FROM botdata ORDER BY id").fetchall()==original
-        assert backend.execute_sql(f"SELECT * FROM {ROLLED_BACK}").fetchall()==[(1,"⚓!")]
+        assert backend.execute_sql(f"SELECT * FROM {ROLLED_BACK}").fetchall()==[(1,"⚓!",0,0,123)]
         assert list(database.Administrators.select().dicts())==admins
 
 
@@ -133,7 +133,7 @@ def test_mysql_forward_path_with_realistic_tuple_results(rename_failure):
     from types import SimpleNamespace as NS
     from migrations.cleanup_botdata import LEGACY_COLUMNS
     backend=MySQLDatabase("synthetic")
-    tables={"botdata":{"columns":LEGACY_COLUMNS,"rows":[(1,"⚓!"),(2,"retired")]}}
+    tables={"botdata":{"columns":LEGACY_COLUMNS,"rows":[(1,"⚓!",0,0,123),(2,"retired",0,0,456)]}}
     statements=[]
     backend.connection_context=lambda:nullcontext()
     backend.get_tables=lambda:list(tables)
@@ -151,11 +151,11 @@ def test_mysql_forward_path_with_realistic_tuple_results(rename_failure):
         elif sql=="SELECT id FROM botdata":rows=tuple((r[0],) for r in tables["botdata"]["rows"])
         elif sql.startswith("CREATE TABLE"):
             assert sql.endswith(") ENGINE=InnoDB")
-            tables[STAGING]={"columns":{"id","prefix"},"rows":[]}
+            tables[STAGING]={"columns":{"id","prefix","bot_id","bot_spam_channel_coastal","server_id_coastal"},"rows":[]}
         elif sql.startswith("INSERT INTO"):
             tables[STAGING]["rows"]=[tables["botdata"]["rows"][0]]
-        elif sql=="SELECT id, prefix FROM botdata WHERE id=1":rows=(tables["botdata"]["rows"][0],)
-        elif sql==f"SELECT id, prefix FROM `{STAGING}`":rows=tuple(tables[STAGING]["rows"])
+        elif sql.startswith("SELECT ") and "FROM botdata WHERE id=1" in sql:rows=(tables["botdata"]["rows"][0],)
+        elif sql.startswith("SELECT ") and f"FROM `{STAGING}`" in sql:rows=tuple(tables[STAGING]["rows"])
         elif sql.startswith("RENAME TABLE"):
             if rename_failure:raise RuntimeError("synthetic atomic rename failure")
             tables[ARCHIVE]=tables.pop("botdata");tables["botdata"]=tables.pop(STAGING)
@@ -168,8 +168,8 @@ def test_mysql_forward_path_with_realistic_tuple_results(rename_failure):
         assert ARCHIVE not in tables and STAGING in tables
     else:
         assert cleanup(backend,**APPLY)["state"]=="cleaned"
-        assert tables["botdata"]["rows"]==[(1,"⚓!")]
-        assert tables[ARCHIVE]["rows"]==[(1,"⚓!"),(2,"retired")]
+        assert tables["botdata"]["rows"]==[(1,"⚓!",0,0,123)]
+        assert tables[ARCHIVE]["rows"]==[(1,"⚓!",0,0,123),(2,"retired",0,0,456)]
     assert not any(sql.startswith(("DROP ","DELETE ","TRUNCATE ")) for sql in statements)
 
 
@@ -209,3 +209,58 @@ def test_runtime_refuses_unencrypted_database_connections(monkeypatch,cipher):
     else:
         with pytest.raises(ConnectionError):backend._connect()
         connection.close.assert_called_once()
+
+
+def two_column_database(tmp_path):
+    backend=seed(tmp_path)
+    with backend.connection_context():
+        backend.execute_sql("UPDATE botdata SET bot_id=111, bot_spam_channel_coastal=222, server_id_coastal=333 WHERE id=1")
+        backend.execute_sql(f"ALTER TABLE botdata RENAME TO {ARCHIVE}")
+        backend.execute_sql("CREATE TABLE botdata(id INTEGER PRIMARY KEY, prefix TEXT NOT NULL)")
+        backend.execute_sql(f"INSERT INTO botdata SELECT id,prefix FROM {ARCHIVE} WHERE id=1")
+    return backend
+
+
+def test_restore_requested_ids_and_repeat_safely(tmp_path):
+    from migrations.restore_coastal_ids import restore,FIELDS
+    backend=two_column_database(tmp_path)
+    with backend.connection_context():
+        archived=backend.execute_sql(f"SELECT * FROM {ARCHIVE} ORDER BY id").fetchall()
+        admins=list(database.Administrators.select().dicts())
+    assert restore(backend)["state"]=="planned"
+    assert restore(backend,apply=True)["state"]=="restored"
+    assert restore(backend,apply=True)["state"]=="already_restored"
+    with backend.connection_context():
+        row=database.BotData.get_by_id(1)
+        assert tuple(getattr(row,f) for f in FIELDS)==(111,222,333)
+        assert row.prefix=="⚓!"
+        assert backend.execute_sql(f"SELECT * FROM {ARCHIVE} ORDER BY id").fetchall()==archived
+        assert list(database.Administrators.select().dicts())==admins
+    assert cleanup(backend)["state"]=="already_clean"
+
+
+def test_restore_rejects_conflict_without_overwriting(tmp_path):
+    from migrations.restore_coastal_ids import restore
+    backend=two_column_database(tmp_path)
+    with backend.connection_context():
+        backend.execute_sql("ALTER TABLE botdata ADD COLUMN bot_id BIGINT")
+        backend.execute_sql("UPDATE botdata SET bot_id=999 WHERE id=1")
+    with pytest.raises(ValueError,match="differs from the archive"):
+        restore(backend,apply=True)
+    with backend.connection_context():
+        assert backend.execute_sql("SELECT bot_id FROM botdata").fetchone()[0]==999
+        assert len(backend.get_columns("botdata"))==3
+
+
+def test_restore_recovers_from_partial_addition(tmp_path,monkeypatch):
+    from migrations.restore_coastal_ids import restore
+    backend=two_column_database(tmp_path);execute=backend.execute_sql
+    def fail(sql,*args,**kwargs):
+        if "ADD COLUMN `bot_spam_channel_coastal`" in sql:raise RuntimeError("synthetic DDL interruption")
+        return execute(sql,*args,**kwargs)
+    monkeypatch.setattr(backend,"execute_sql",fail)
+    with pytest.raises(RuntimeError):restore(backend,apply=True)
+    monkeypatch.setattr(backend,"execute_sql",execute)
+    assert restore(backend,apply=True)["state"]=="restored"
+    with backend.connection_context():
+        assert backend.execute_sql("SELECT bot_id,bot_spam_channel_coastal,server_id_coastal FROM botdata").fetchone()==(111,222,333)

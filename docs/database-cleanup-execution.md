@@ -1,5 +1,7 @@
 # New Captain database cleanup — executed October 28, 2026
 
+Current state includes the three owner-requested identifiers restored after the initial cleanup below.
+
 The owner supplied the connection to a newly created dedicated Captain database and exports of
 botdata/administrators. No connection URI, host account, password or administrator identity is
 recorded here. The original production database was not accessed or modified.
@@ -44,3 +46,16 @@ and the archive remains available. New code and the new database must be selecte
 an approved deployment: old code still expects the legacy columns. Use the supplied connection in
 private deployment environment variables and explicitly configure database_ssl_mode=self_signed.
 The read-only-by-default cleanup/rollback command and restoration runbook are in database-audit.md.
+
+## Follow-up: retained identifiers restored
+
+The owner requested bot_id, bot_spam_channel_coastal and server_id_coastal be added back from
+botdata.sql. All three columns were added to the active table and populated from archived production
+row 1. Values were compared against the original verified export backup and matched exactly.
+Prefix %, every administrator value and the entire legacy archive remained unchanged. Runtime
+initialization passed with the five-field model. Repeating restoration reports already_restored,
+and the updated cleanup preflight reports already_clean.
+
+A separate private before-restoration snapshot/checksum is stored in the Git-ignored backup folder
+as captain-before-id-restore-20261028T193453Z.json. No credentials or record contents were committed.
+No bot restart/deployment, original database change or main merge occurred.

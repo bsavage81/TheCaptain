@@ -97,7 +97,8 @@ operator-configuration response without assigning roles. No old Season 9 links o
 
 ## Database preparation and startup
 
-Review [database inventory and migration](docs/database-audit.md) first. The runtime model keeps only production `botdata.id`/`prefix` and the administrator table.
+Review [database inventory and migration](docs/database-audit.md) first. The runtime model keeps production `botdata.id`, `prefix`, `bot_id`, `bot_spam_channel_coastal`,
+`server_id_coastal`, and the administrator table.
 The explicit cleanup archives all original settings rows/columns for rollback and never deletes
 administrator records. Startup
 performs no table/schema DDL. For a fresh database, the explicit additive migration must be reviewed
@@ -118,7 +119,7 @@ Runtime retains configured owner seeding only when Administrators is empty.
 For an existing legacy settings table, preview `python -m migrations.cleanup_botdata`. After a verified
 independent backup, confirmed exclusive database ownership and an approved maintenance window,
 explicitly apply with `--apply --maintenance-window --exclusive-database --backup-verified`.
-The full old table becomes `captain_botdata_legacy`; only row-1 ID/prefix remain active. Use the same
+The full old table becomes `captain_botdata_legacy`; production row-1 prefix and the three Coastal identifiers remain active. Use the same
 command with `--rollback` to preview restoration; explicit rollback preserves current clean data in
 `captain_botdata_clean_rollback`. No unknown tables, administrator records or historical values
 are dropped. See the database runbook before code rollout: the older runtime needs the legacy schema.
@@ -140,3 +141,9 @@ are explicitly labelled as history. Archive source remains unchanged and never l
 The new MariaDB settings cleanup and runtime initialization/permissions were verified live; see
 [execution report](docs/database-cleanup-execution.md). The original database was unchanged.
 No Discord/Sheets access, deployment, PR merge, bot retirement or running-bot restart was performed.
+
+The owner-requested bot/Coastal identifiers have been restored to the new database from the exact
+original production row. For an earlier two-column cleanup, preview
+`python -m migrations.restore_coastal_ids`, then explicitly use `--apply` to restore missing fields
+from captain_botdata_legacy. Existing differing values are never overwritten. These retained IDs do
+not silently replace the current JSON guild/channel mappings.

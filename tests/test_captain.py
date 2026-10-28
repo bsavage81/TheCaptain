@@ -76,7 +76,7 @@ def test_fresh_and_existing_schema(tmp_path):
     assert row.id == 1
     with backend.connection_context():
         assert set(backend.get_tables()) == {"botdata", "administrators"}
-        assert set(BotData._meta.fields) == {"id","prefix"}
+        assert set(BotData._meta.fields) == {"id","prefix","bot_id","bot_spam_channel_coastal","server_id_coastal"}
         row.prefix = "!"
         row.save()
     again = initialize_database(cfg, backend)

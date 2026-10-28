@@ -6,7 +6,7 @@ Base: latest main `646413257f0a8670dad9e3611c9fab2d8e689108`. Dedicated branch:
 | Check | Exact result |
 | --- | --- |
 | Latest-main baseline pytest | 31 passed, 1 failed (old Season 9 title expectation after owner's main change) |
-| Final pytest | **81 passed**, 0 failed, 0 skipped; 1 upstream audioop deprecation warning |
+| Final pytest | **84 passed**, 0 failed, 0 skipped; 1 upstream audioop deprecation warning |
 | Compilation: main.py utils migrations tests | Passed |
 | Ruff 0.17.3, select F, active source/migrations/tests | Passed; initial 11 unused-import/extraneous-f-string findings fixed |
 | pip check | No broken requirements |
@@ -69,5 +69,10 @@ record and all archived settings were verified unchanged. See database-cleanup-e
 No merge/deployment or running-bot shutdown was performed.
 
 Additional offline cases cover CHECK-constraint refusal, verified-identity TLS defaults, explicit
-self-signed opt-in, and rejection of unencrypted runtime connections. Final result: 81 tests passed,
+self-signed opt-in, and rejection of unencrypted runtime connections. Final result: 84 tests passed,
 0 failed/skipped, one unchanged upstream audioop warning. Compilation, Ruff and pip check pass.
+
+Identifier-retention follow-up: 84 offline tests pass, including restoration/retry, conflict refusal
+and recovery after partial column creation. The live new database's three restored IDs matched
+original production row 1; prefix, administrator records and archived data remained unchanged.
+Runtime initialization, repeated restoration and updated cleanup preflight all passed live.

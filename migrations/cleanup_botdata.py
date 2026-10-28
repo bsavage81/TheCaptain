@@ -15,7 +15,9 @@ ACTIVE = "botdata"
 ARCHIVE = "captain_botdata_legacy"
 STAGING = "captain_botdata_new"
 ROLLED_BACK = "captain_botdata_clean_rollback"
-CLEAN_COLUMNS = {"id", "prefix"}
+COPY_COLUMNS = ("id", "prefix", "bot_id", "bot_spam_channel_coastal", "server_id_coastal")
+CLEAN_COLUMNS = set(COPY_COLUMNS)
+ORIGINAL_CLEAN_COLUMNS = {"id", "prefix"}
 LEGACY_COLUMNS = CLEAN_COLUMNS | {
     "persistent_views", "bot_spam_channel_coastal", "bot_spam_channel_aurafall",
     "bot_type", "bot_id", "server_id_aurafall", "server_id_coastal",
@@ -103,7 +105,7 @@ def cleanup(backend, *, apply=False, maintenance_window=False, exclusive_databas
         if ACTIVE not in names:
             raise CleanupRefused("No Captain botdata table found")
         columns = _columns(backend, ACTIVE)
-        if columns not in (CLEAN_COLUMNS, LEGACY_COLUMNS):
+        if columns not in (CLEAN_COLUMNS, LEGACY_COLUMNS, ORIGINAL_CLEAN_COLUMNS):
             raise CleanupRefused("Unrecognized BotData columns; no objects will be guessed or removed")
         _dependencies(backend)
         rows = backend.execute_sql("SELECT id FROM botdata").fetchall()
@@ -117,19 +119,21 @@ def cleanup(backend, *, apply=False, maintenance_window=False, exclusive_databas
                 if ROLLED_BACK in names:
                     return {"state": "already_rolled_back", "applied": False}
                 raise CleanupRefused("No cleanup archive exists to restore")
-            if columns != CLEAN_COLUMNS or ids != [1] or ROLLED_BACK in names:
+            if columns not in (CLEAN_COLUMNS, ORIGINAL_CLEAN_COLUMNS) or ids != [1] or ROLLED_BACK in names:
                 raise CleanupRefused("Unexpected rollback state; preserve all tables for manual review")
-            if _columns(backend, ARCHIVE) not in (CLEAN_COLUMNS, LEGACY_COLUMNS):
+            if _columns(backend, ARCHIVE) not in (CLEAN_COLUMNS, LEGACY_COLUMNS, ORIGINAL_CLEAN_COLUMNS):
                 raise CleanupRefused("Unrecognized archived settings schema")
             if not backend.execute_sql(f"SELECT id FROM `{ARCHIVE}` WHERE id=1").fetchone():
                 raise CleanupRefused("Archived production row is missing")
             plan = "Restore original settings table; preserve current clean settings in rollback table"
         else:
+            if columns == ORIGINAL_CLEAN_COLUMNS:
+                raise CleanupRefused("Run python -m migrations.restore_coastal_ids to restore the owner-requested identifiers before further cleanup")
             if columns == CLEAN_COLUMNS and ids == [1]:
                 return {"state": "already_clean", "applied": False, "archive_present": ARCHIVE in names}
             if ARCHIVE in names or ROLLED_BACK in names:
                 raise CleanupRefused("Existing recovery tables must not be overwritten")
-            plan = "Keep production id/prefix in active BotData; archive all original columns and rows"
+            plan = "Keep production prefix and Coastal identifiers in active BotData; archive all original columns and rows"
         if not apply:
             return {"state": "planned", "applied": False, "plan": plan,
                     "active_columns": sorted(columns), "configuration_rows": len(ids)}
@@ -140,12 +144,13 @@ def cleanup(backend, *, apply=False, maintenance_window=False, exclusive_databas
             return {"state": "rolled_back", "applied": True}
         # New table/copy can leave a recoverable staging table if interrupted; never auto-delete it.
         if isinstance(backend, MySQLDatabase):
-            backend.execute_sql(f"CREATE TABLE `{STAGING}` (`id` INTEGER NOT NULL AUTO_INCREMENT PRIMARY KEY, `prefix` TEXT NOT NULL) ENGINE=InnoDB")
+            backend.execute_sql(f"CREATE TABLE `{STAGING}` (`id` INTEGER NOT NULL AUTO_INCREMENT PRIMARY KEY, `prefix` TEXT NOT NULL, `bot_id` BIGINT NOT NULL DEFAULT 0, `bot_spam_channel_coastal` BIGINT NOT NULL DEFAULT 0, `server_id_coastal` BIGINT NOT NULL DEFAULT 0) ENGINE=InnoDB")
         else:
             StagedBotData.create_table(safe=False)
-        backend.execute_sql(f"INSERT INTO `{STAGING}` (`id`, `prefix`) SELECT `id`, `prefix` FROM `{ACTIVE}` WHERE `id`=1")
-        original = backend.execute_sql("SELECT id, prefix FROM botdata WHERE id=1").fetchone()
-        copied = list(backend.execute_sql(f"SELECT id, prefix FROM `{STAGING}`").fetchall())
+        quoted = ", ".join(f"`{name}`" for name in COPY_COLUMNS)
+        backend.execute_sql(f"INSERT INTO `{STAGING}` ({quoted}) SELECT {quoted} FROM `{ACTIVE}` WHERE `id`=1")
+        original = backend.execute_sql(f"SELECT {quoted} FROM botdata WHERE id=1").fetchone()
+        copied = list(backend.execute_sql(f"SELECT {quoted} FROM `{STAGING}`").fetchall())
         if copied != [original]:
             raise CleanupRefused("Production settings copy mismatch; active settings remain unchanged")
         _swap(backend, ACTIVE, ARCHIVE, STAGING)
