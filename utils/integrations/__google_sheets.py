@@ -26,8 +26,12 @@ class SheetsService:
             creds = ServiceAccountCredentials.from_json_keyfile_name(self.settings["credentials_path"], SCOPES)
             client = gspread.authorize(creds)
         client.set_timeout(30)
-        self.applications = client.open("CCS9 Realm Application").sheet1
-        markers = client.open("Coastal Markers")
+        self.applications = client.open(
+            self.settings.get("application_sheet", "CCS10 Realm Application")
+        ).sheet1
+        markers = client.open(
+            self.settings.get("markers_sheet", "Coastal Markers S10")
+        )
         self.markers = {name: markers.worksheet(name) for name in ("Overworld", "Nether", "End")}
         questions = markers.worksheet("Questions")
         self.application_content = load_content(self.applications)
