@@ -11,12 +11,12 @@ from discord.ext import commands
 from dotenv import load_dotenv
 from sentry_sdk import Hub
 
-from core import database
-from core.checks import is_botAdmin2
-from core.checks import is_botAdmin3
-from core.common import Colors, ButtonHandler
-from core.common import Others
-from core.logging_module import get_log
+from utils.database import __database as database
+from utils.helpers.__checks import is_botAdmin2
+from utils.helpers.__checks import is_botAdmin3
+from utils.core_features.__common import Colors, ButtonHandler
+from utils.core_features.__common import Others
+from utils.helpers.__logging_module import get_log
 
 _log = get_log(__name__)
 load_dotenv()

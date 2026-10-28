@@ -5,7 +5,7 @@ from peewee import AutoField, Model, IntegerField, TextField, SqliteDatabase, Bi
 from flask import Flask
 from dotenv import load_dotenv
 
-from core.logging_module import get_log
+from utils.helpers.__logging_module import get_log
 
 load_dotenv()
 

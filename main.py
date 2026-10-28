@@ -21,10 +21,10 @@ from pygit2 import Repository, GIT_DESCRIBE_TAGS
 from sentry_sdk.integrations.flask import FlaskIntegration
 from sentry_sdk.integrations.logging import LoggingIntegration
 
-from core import database
-from core.common import get_bot_data_id
-from core.logging_module import get_log
-from core.special_methods import (
+from utils.database import __database as database
+from utils.core_features.__common import get_bot_data_id
+from utils.helpers.__logging_module import get_log
+from utils.core_features.__special_methods import (
     on_app_command_error_,
     initialize_db,
     on_ready_,
@@ -47,12 +47,9 @@ bot_info: database.BotData = (
 
 
 def get_extensions():  # Gets extension list dynamically
-    extensions = ["jishaku"]
-    for file in Path("utils").glob("**/*.py"):
-        if "!" in file.name or "__" in file.name:
-            continue
-        extensions.append(str(file).replace("/", ".").replace(".py", ""))
-    return extensions
+    return ["jishaku", "utils.core_features.cf_main", "utils.admin.bot_management.bm_main",
+            "utils.coastal_applications.ca_main", "utils.coastal_guide.cg_main",
+            "utils.coastal_poi.poi_main"]
 
 
 class OKCommandTree(app_commands.CommandTree):

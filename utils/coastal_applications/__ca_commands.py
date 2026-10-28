@@ -9,7 +9,7 @@ from discord.ext import commands
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
-from core.common import load_config
+from utils.core_features.__common import load_config
 
 config, _ = load_config()
 logger = logging.getLogger(__name__)

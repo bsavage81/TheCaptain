@@ -1,0 +1,157 @@
+{
+  "core/common.py": [],
+  "core/special_methods.py": [],
+  "core/database.py": [],
+  "core/checks.py": [],
+  "core/logging_module.py": [],
+  "utils/Coastal_Cogs/CoastalAppCMD.py": [
+    {
+      "python_name": "applycoastal",
+      "options": [
+        "self",
+        "interaction"
+      ],
+      "decorators": [
+        "app_commands.command(name='applycoastal', description='Apply to the Coastal Craft Discord Server')",
+        "app_commands.guilds(config['MRP'])"
+      ]
+    },
+    {
+      "python_name": "approveapp",
+      "options": [
+        "self",
+        "interaction",
+        "appnumber"
+      ],
+      "decorators": [
+        "app_commands.command(name='approveapp', description='Approve an Application!')",
+        "app_commands.guilds(config['PBtest'], config['Coastal'])",
+        "app_commands.describe(appnumber='Application number to approve')",
+        "app_commands.checks.has_role('OP Team')"
+      ]
+    },
+    {
+      "python_name": "denyapp",
+      "options": [
+        "self",
+        "interaction",
+        "appnumber"
+      ],
+      "decorators": [
+        "app_commands.command(name='denyapp', description='Deny an Application!')",
+        "app_commands.guilds(config['PBtest'], config['Coastal'])",
+        "app_commands.describe(appnumber='Application number to deny')",
+        "app_commands.checks.has_role('OP Team')"
+      ]
+    }
+  ],
+  "utils/Coastal_Cogs/CoastalGuide.py": [
+    {
+      "python_name": "guide",
+      "options": [
+        "self",
+        "interaction"
+      ],
+      "decorators": [
+        "app_commands.command(name='guide', description='Agree to the Coastal Craft Players Guide!')",
+        "app_commands.guilds(config['PBtest'], config['Coastal'])",
+        "commands.has_role('OP Team')"
+      ]
+    }
+  ],
+  "utils/Coastal_Cogs/CoastalPOICMD.py": [
+    {
+      "python_name": "addpoi_overworld",
+      "options": [
+        "self",
+        "interaction",
+        "x_coord",
+        "z_coord"
+      ],
+      "decorators": [
+        "app_commands.command(name='addpoi_overworld', description='Add a POI to the Overworld!')",
+        "app_commands.guilds(config['PBtest'], config['Coastal'])"
+      ]
+    },
+    {
+      "python_name": "addpoi_nether",
+      "options": [
+        "self",
+        "interaction",
+        "x_coord",
+        "z_coord"
+      ],
+      "decorators": [
+        "app_commands.command(name='addpoi_nether', description='Add a POI to the Nether!')",
+        "app_commands.guilds(config['PBtest'], config['Coastal'])"
+      ]
+    },
+    {
+      "python_name": "addpoi_end",
+      "options": [
+        "self",
+        "interaction",
+        "x_coord",
+        "z_coord"
+      ],
+      "decorators": [
+        "app_commands.command(name='addpoi_end', description='Add a POI to the End!')",
+        "app_commands.guilds(config['PBtest'], config['Coastal'])"
+      ]
+    },
+    {
+      "python_name": "addpoi_end",
+      "options": [
+        "self",
+        "interaction",
+        "x_coord",
+        "z_coord"
+      ],
+      "decorators": [
+        "app_commands.command(name='addpoi_endcity_claim', description='Add an End city that you hae raided!')",
+        "app_commands.guilds(config['PBtest'], config['Coastal'])"
+      ]
+    },
+    {
+      "python_name": "addpoi_end",
+      "options": [
+        "self",
+        "interaction",
+        "x_coord",
+        "z_coord"
+      ],
+      "decorators": [
+        "app_commands.command(name='addpoi_end_returngateway', description='Mark a return gateway in the End')",
+        "app_commands.guilds(config['PBtest'], config['Coastal'])"
+      ]
+    }
+  ],
+  "utils/Global_cogs/sync_slash.py": [
+    {
+      "python_name": "sync",
+      "options": [
+        "self",
+        "ctx",
+        "action"
+      ],
+      "decorators": [
+        "commands.command()",
+        "is_botAdmin3"
+      ]
+    }
+  ],
+  "utils/Global_cogs/repeat.py": [
+    {
+      "python_name": "repeat",
+      "options": [
+        "self",
+        "interaction",
+        "message"
+      ],
+      "decorators": [
+        "app_commands.command(name='repeat', description='Repeats what you type')",
+        "app_commands.describe(message='Phrase to repeat')"
+      ]
+    }
+  ]
+}

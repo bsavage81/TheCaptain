@@ -11,10 +11,10 @@ import random
 from discord import ButtonStyle, ui, SelectOption
 from dotenv import load_dotenv
 
-from core import database
+from utils.database import __database as database
 from datetime import datetime
 
-from core.logging_module import get_log
+from utils.helpers.__logging_module import get_log
 
 _log = get_log(__name__)
 

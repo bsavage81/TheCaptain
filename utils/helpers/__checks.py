@@ -10,7 +10,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from core import database
+from utils.database import __database as database
 
 
 def predicate_LV1(ctx) -> bool:

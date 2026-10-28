@@ -9,7 +9,7 @@ from datetime import datetime
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import asyncio
-from core.common import load_config
+from utils.core_features.__common import load_config
 
 config, _ = load_config()
 i = 1
