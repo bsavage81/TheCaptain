@@ -6,7 +6,7 @@ Base: latest main `646413257f0a8670dad9e3611c9fab2d8e689108`. Dedicated branch:
 | Check | Exact result |
 | --- | --- |
 | Latest-main baseline pytest | 31 passed, 1 failed (old Season 9 title expectation after owner's main change) |
-| Final pytest | **58 passed**, 0 failed, 0 skipped; 1 upstream audioop deprecation warning |
+| Final pytest | **77 passed**, 0 failed, 0 skipped; 1 upstream audioop deprecation warning |
 | Compilation: main.py utils migrations tests | Passed |
 | Ruff 0.17.3, select F, active source/migrations/tests | Passed; initial 11 unused-import/extraneous-f-string findings fixed |
 | pip check | No broken requirements |
@@ -52,3 +52,16 @@ No bot is terminated automatically and no global commands are synced at startup.
 
 Historical modernization results are preserved in validation-2026-10-27.md. See staging.md for
 single-deployment verification/rollback and database-audit.md for destructive items requiring approval.
+
+## Database cleanup completion follow-up
+
+The minimal runtime model and reversible cleanup/rollback were tested offline. New coverage verifies
+all typed legacy rows/columns and production Unicode prefix survive archival and rollback; all
+administrator records (including lower tiers) remain unchanged; repeated runs are safe; missing
+operational declarations and unknown columns/FKs/views/triggers/indexes block writes; interrupted
+copy/rename leaves recoverable state; and MySQL uses a single multi-table rename. A realistic fake
+MySQL boundary returns tuples and tests atomic rename failure; SQLite exercises the full round trip.
+Compilation and Ruff F checks pass. The unchanged dependency set retains the preceding clean audit.
+No credentials, .env or botconfig.json are present in this workspace; actual database cleanup has
+not been executed. Connection location, exclusive ownership, backups and a coordinated code/schema
+maintenance window remain required. No merge/deployment or running-bot shutdown was performed.

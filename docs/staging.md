@@ -15,7 +15,9 @@ resources/synthetic records; do not exercise writes against production Sheets as
    hosted CI/security checks and `docs/validation.md`. No live secrets belong in CI.
 4. Keep the current production schema and existing row 1. Follow `database-audit.md` for a private
    backup, read-only inventory and explicit fresh-schema bootstrap if needed. Startup does no DDL.
-   Do not delete row 2, columns, tables or administrator records. Remove production bot_type;
+   The reversible cleanup archives original settings rows/columns; never delete that archive or
+   administrator records. Preview cleanup_botdata and verify exclusive database ownership and backup
+   before its explicit apply. Coordinate schema cleanup with the new runtime; old code needs rollback. Remove production bot_type;
    a leftover non-STABLE value is intentionally rejected to avoid starting the wrong instance.
 5. Preserve all configured guild/channel/role/owner IDs. PBtest is optional; retain an existing value
    if its command scope is still wanted. Verify OP Team permission intent and role hierarchy.
@@ -56,7 +58,8 @@ resources/synthetic records; do not exercise writes against production Sheets as
 2. Restore the saved operational code and matching environment/config, preserving existing data.
    The prior main supports title-configured Season 10 Sheets, but its guide is Season 9; review
    that limitation before using it. Restore `bot_type=STABLE` only if the old code requires it.
-3. Physical legacy rows/columns and administrator records are intact. Normal consolidation needs
+3. Physical legacy rows/columns remain in the cleanup archive; use cleanup_botdata --rollback
+   with its documented prerequisites before restoring older code. Administrator records are intact. A fresh bootstrap needs
    no reverse SQL. Newly bootstrapped tables/row should be left intact unless a separate approved
    restoration plan proves they can be removed without losing data.
 4. Verify one writer, the production row/prefix and current guild/channel mappings. Do not revive

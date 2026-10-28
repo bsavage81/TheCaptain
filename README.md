@@ -94,8 +94,9 @@ operator-configuration response without assigning roles. No old Season 9 links o
 
 ## Database preparation and startup
 
-Review [database inventory and migration](docs/database-audit.md) first. Existing production tables,
-row 1, retired row 2, unused compatibility columns and administrator records are preserved. Startup
+Review [database inventory and migration](docs/database-audit.md) first. The runtime model keeps only production `botdata.id`/`prefix` and the administrator table.
+The explicit cleanup archives all original settings rows/columns for rollback and never deletes
+administrator records. Startup
 performs no table/schema DDL. For a fresh database, the explicit additive migration must be reviewed
 and run by an operator; existing healthy production data needs no physical migration:
 
@@ -110,6 +111,15 @@ only, and never deletes, drops, alters or copies a retired row into production. 
 `botdata` table missing row 1 fails for owner-reviewed restoration. `--apply` only creates missing
 Captain tables and bootstraps a default row 1 in a fresh/empty table. It does not grant permissions.
 Runtime retains configured owner seeding only when Administrators is empty.
+
+For an existing legacy settings table, preview `python -m migrations.cleanup_botdata`. After a verified
+independent backup, confirmed exclusive database ownership and an approved maintenance window,
+explicitly apply with `--apply --maintenance-window --exclusive-database --backup-verified`.
+The full old table becomes `captain_botdata_legacy`; only row-1 ID/prefix remain active. Use the same
+command with `--rollback` to preview restoration; explicit rollback preserves current clean data in
+`captain_botdata_clean_rollback`. No unknown tables, administrator records or historical values
+are dropped. See the database runbook before code rollout: the older runtime needs the legacy schema.
+
 
 After approved configuration review, start `python /absolute/path/to/TheCaptain/main.py`.
 Database and Sheets initialization are explicit; extensions register once in a fixed order.

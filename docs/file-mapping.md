@@ -31,3 +31,7 @@ account validation remain in `utils/integrations/__google_sheets.py`; confirmed 
 `tests/test_season10.py` extends the existing suite. Empty `utils/events/__init__.py` and inactive
 root `workflows/` security examples were removed after reference checks. Active CI remains in
 `.github/workflows/`; archive files and historical assets are preserved unchanged.
+
+Database completion adds `migrations/cleanup_botdata.py` for reversible settings-table cleanup and
+rollback, with historical synthetic schema fixtures in `tests/legacy_database.py` and migration
+regressions in `tests/test_database_cleanup.py`. The runtime BotData model now contains id/prefix only.

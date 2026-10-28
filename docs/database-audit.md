@@ -2,8 +2,9 @@
 
 Source-based audit, October 28, 2026. No live database, credentials or applicant records were read.
 Actual table existence, row contents/counts, indexes, triggers, scheduled jobs, grants, external
-consumers and cross-application dependencies remain unverified. No object below is approved for
-deletion merely because it has no active Python caller.
+consumers and cross-application dependencies remain unverified. The owner subsequently authorized completion of database cleanup. The implemented cleanup
+archives the known BotData legacy objects rather than deleting records; unknown tables and
+permission changes still need a live inventory. No live execution has occurred.
 
 ## Object inventory
 
@@ -12,15 +13,15 @@ deletion merely because it has no active Python caller.
 | `botdata` table | Legacy bot settings; current prefix store | `initialize_database`, `ensure_production_row`, `main.setup_hook`; migration tool | Keep existing physical table |
 | `botdata.id` | Configuration identity | Runtime always selects 1; migration checks 1/2 presence | Keep primary key; never infer production from row 2 |
 | `botdata.prefix` | Prefix for sync/jishaku/legacy commands | `main.setup_hook` | Keep production value unchanged |
-| `botdata.persistent_views` | Old view-registration flag | Model mapping only; no runtime behavior | Cleanup candidate; retain for schema/rollback compatibility until approved |
-| `botdata.bot_spam_channel_coastal` | Historical Coastal routing | Model mapping only; actual routing uses JSON | Candidate; verify panel/scripts/archived tooling before removal |
-| `botdata.bot_spam_channel_aurafall` | Historical Aurafall routing | Model mapping only | Candidate; verify external consumers |
-| `botdata.bot_type` | Retired row routing metadata | Legacy field mapping/default insertion only; no row selection | Candidate; existing values preserved; no uppercase normalization of existing rows |
-| `botdata.bot_id` | Historical Discord bot identity | Model mapping only | Candidate; verify operational consumers |
-| `botdata.server_id_aurafall` | Historical Aurafall guild | Model mapping only | Candidate; verify external consumers |
-| `botdata.server_id_coastal` | Historical Coastal guild | Model mapping only; JSON is current source | Candidate; verify external consumers |
-| `botdata` row 1 | Previous STABLE production configuration | Previously STABLE→1; now explicit singleton | Keep every value unchanged |
-| `botdata` row 2 | Previous BETA configuration | Read-only presence check in migration; never used for startup | Retirement/archive candidate; preserve pending owner approval |
+| `botdata.persistent_views` | Old view-registration flag | Historical schema only; no runtime behavior | Archived by reversible cleanup; absent from clean runtime model |
+| `botdata.bot_spam_channel_coastal` | Historical Coastal routing | Historical schema only; actual routing uses JSON | Archived by reversible cleanup; review external consumers before live rename |
+| `botdata.bot_spam_channel_aurafall` | Historical Aurafall routing | Historical schema only | Archived by reversible cleanup; verify external consumers first |
+| `botdata.bot_type` | Retired row routing metadata | Historical schema only; no row selection | Archived unchanged; no runtime deployment routing |
+| `botdata.bot_id` | Historical Discord bot identity | Historical schema only | Archived unchanged; verify operational consumers first |
+| `botdata.server_id_aurafall` | Historical Aurafall guild | Historical schema only | Archived by reversible cleanup; verify external consumers first |
+| `botdata.server_id_coastal` | Historical Coastal guild | Historical schema only; JSON is current source | Archived by reversible cleanup; verify external consumers first |
+| `botdata` row 1 | Previous STABLE production configuration | Previously STABLE→1; now explicit singleton | Keep production id/prefix active; preserve every original field in the legacy archive |
+| `botdata` row 2 | Previous BETA configuration | Read-only presence check in migration; never used for startup | Retained in captain_botdata_legacy, never selected by runtime |
 | Other `botdata` rows | Unknown/historical | Not selected by current runtime | Uncertain; preserve and inventory externally |
 | `administrators` table | Bot operator permissions | `is_administrator`, empty-table owner seeding | Required shared infrastructure; keep |
 | `administrators.id` | Row identity | Peewee primary key | Keep |
@@ -36,24 +37,28 @@ schema has none. The read-only migration inventory reports table names, column n
 metadata and row-1/row-2 presence, not values or administrator identities. Archived model names are
 not reliable SQL table identifiers; no DROP templates are generated for inferred names.
 
-## Proposed cleaned Captain schema (future approval only)
+## Implemented cleanup target — live execution pending
 
-The minimal runtime target would retain:
+The runtime model now retains only:
 
-- `botdata`: `id` AutoField/primary key and `prefix` TextField, singleton row 1.
+- `botdata`: `id` AutoField/primary key and `prefix` TextField; active singleton row 1.
 - `administrators`: `id` AutoField, unique BigInteger `discordID`, Integer `TierLevel`.
-- Existing permission records; no role/owner policy change.
+- All existing administrator records; no permission/tier policy change.
 
-This branch **does not implement physical column/row removal**. Current model fields remain mapped
-so inserts and rollback continue to work with Captain's existing schema. Removing a mapped column
-would break the current compatibility model; a future approved migration must update the model,
-verify all external consumers, preserve a typed backup and validate both directions together.
-No PortalBot schema is substituted, and no application/POI records are moved into MySQL.
+`migrations/cleanup_botdata.py` moves the **entire original BotData table**, including all retired
+rows and unused typed columns, to `captain_botdata_legacy`. The new active table receives only the
+exact production row-1 ID/prefix. No row, column value or unknown table is deleted. The archive
+is retained for rollback and is not a substitute for an independent verified database backup.
+Legacy models exist only in synthetic test fixtures, not in runtime startup.
+
+A new runtime can read an existing legacy row 1 before cleanup. An old runtime that still selects
+legacy columns cannot read the cleaned table, so migration and code rollout require an approved
+maintenance window. Empty legacy tables fail for explicit review rather than guessing values.
 
 ## Forward migration preparation
 
 Production routing previously came from source mapping STABLE→row 1, BETA→row 2. Only prefix was
-read from that row. All current guild/channel/role mappings come from private JSON; preserve those
+consumed by startup. All current guild/channel/role mappings come from private JSON; preserve those
 values and the current production schema. Actual deployment row 1 contents cannot be verified offline.
 
 1. Owner exports a consistent production database backup and its DDL/grants to private storage;
@@ -63,44 +68,70 @@ values and the current production schema. Actual deployment row 1 contents canno
 3. Run `python -m migrations.single_production` with the intended database environment. Default is
    read-only, including on an empty schema. It reports metadata without printing connection secrets.
    Errors are sanitized. Do not paste private database dumps into issues or repository fixtures.
-4. If both Captain tables exist with all expected columns and row 1 exists, consolidation is a
-   **data-preserving no-op**: keep row 1 and all rows/permissions exactly as they are. No SQL migration
-   is needed to choose production unconditionally. Remove obsolete bot_type from production config.
-5. For a fresh/empty schema only, review and explicitly run
-   `python -m migrations.single_production --apply`. It creates missing Captain tables with the
-   existing model definitions and inserts row 1 using the existing defaults if no rows exist.
-   It never seeds Administrators; normal startup retains its original empty-admin seeding.
-6. An incomplete existing schema or a nonempty BotData table missing row 1 fails closed. Restore the
-   verified production row or resolve the schema through an owner-reviewed process. Row 2 is never
-   renamed/copied into row 1, and a retired BETA prefix cannot overwrite production.
+4. For a fresh database only, `python -m migrations.single_production --apply` explicitly creates
+   the minimal Captain tables and row 1. This additive tool does not clean existing legacy data or
+   grant permissions. Default remains a read-only preflight.
+5. For existing legacy settings, run `python -m migrations.cleanup_botdata` to review the plan.
+   It refuses unknown columns, foreign keys to/from settings, views, triggers, routines/events,
+   custom settings indexes, unsupported servers/engines and unexpected recovery tables.
+6. After verified backup/restore, external-consumer review, exclusive Captain ownership and an
+   approved stopped-writer maintenance window, the operator applies:
 
-The additive script is repeat-safe for serial execution; run it while bots are stopped during an
-approved maintenance window. `create_tables(safe=True)` preserves existing objects. MySQL DDL can
-autocommit, so Python transactions are not a rollback guarantee for table creation. Runtime startup
-performs **no schema DDL** and tells operators to run the explicit tool if tables are missing.
+   ```shell
+   python -m migrations.cleanup_botdata --apply --maintenance-window --exclusive-database --backup-verified
+   ```
+
+   These declarations are prerequisites, not an automatic bot shutdown or proof that other writers
+   are stopped. The tool copies production id/prefix to `captain_botdata_new`, verifies equality,
+   then swaps names so the active table is minimal and the complete original becomes the archive.
+   It never updates Administrators or touches application/POI Sheets.
+7. MySQL uses a single multi-table RENAME statement, requiring InnoDB and MySQL 8+ or MariaDB
+   10.6.1+. SQLite offline tests use a transactional pair of renames after rejecting dependencies.
+   DDL staging/copy is not claimed to be transactional on MySQL. Any interrupted staging table
+   remains intact and blocks reruns for inspection; it is never auto-dropped.
+8. An already-clean singleton is a no-op. Missing production row 1, unexpected columns or an
+   existing archive that would be overwritten stops the operation. Unknown historical tables,
+   permissions and cross-service consumers are never guessed or deleted.
+
+The tools are repeat-safe for serial, inspected runs. Runtime startup performs no schema DDL.
+No live credentials/connection are configured in this workspace, so these operations have only
+been executed on synthetic databases. The live database location, independent backup and exclusive
+ownership must be established before actual cleanup.
 
 ## Rollback/restoration procedure
 
-Existing production data is never rewritten, so there is no reverse data migration for a normal
-row-1 deployment. Stop the new process manually in an approved window; restore the saved code,
-dependency environment, `.env` and JSON config. If restoring the previous release, keep
-`bot_type=STABLE` to select the same production row. Never revive the retired bot against shared
-Sheets. Preserve row 2 and all compatibility fields so the prior model remains readable.
+Stop all writers in an approved maintenance window. Preview with
+`python -m migrations.cleanup_botdata --rollback`. Then explicitly restore the original table:
 
-For a fresh schema created by an explicitly applied bootstrap, leave the new tables/row in place;
-do not auto-delete them on rollback because they may have acquired live data. If restoration is
-necessary, use the tested private database backup and DBA-approved restoration process. Any
-reversal that drops objects, deletes rows or overwrites newer records requires separate approval.
-No rollback script containing executable destructive SQL is included.
+```shell
+python -m migrations.cleanup_botdata --rollback --apply --maintenance-window --exclusive-database --backup-verified
+```
 
-## Destructive changes requiring owner approval (none executed)
+Rollback renames the current clean table to `captain_botdata_clean_rollback` and restores
+`captain_botdata_legacy` to `botdata`. Thus it preserves any new prefix edits separately while
+restoring the original complete rows/columns. Reconcile such edits before restarting the old code.
+Administrator records never change. Restore the matching old code/config/dependencies; older
+code may require `bot_type=STABLE`. Never revive a retired writer against shared Sheets.
+
+If a staging table remains after failure, the tool refuses to overwrite/delete it. Determine whether
+activation occurred using schema/table metadata, preserve all recovery tables, and use the verified
+private backup if necessary. No DROP/DELETE/TRUNCATE statements exist in this cleanup or rollback.
+Do not discard archive/rollback tables until a separately reviewed retention decision confirms the
+rollback window is closed. Their names are fixed to avoid overwriting earlier recovery artifacts.
+
+Official behavior references: [MySQL RENAME TABLE](https://dev.mysql.com/doc/refman/8.0/en/rename-table.html),
+[MariaDB atomic rename](https://mariadb.com/docs/server/reference/sql-statements/data-definition/rename-table),
+and [SQLite ALTER TABLE dependencies](https://www.sqlite.org/lang_altertable.html).
+Foreign keys/views/triggers are rejected because table renaming can retarget their references.
+
+## Further data deletion or unknown-object removal (not implemented or executed)
 
 - Archive/delete retired row 2 or other unused BotData rows after proving no deployment reads them.
-- Remove any compatibility column listed above, coupled with a separate ORM model migration.
+- Permanently discard archived compatibility columns/rows after the retention and rollback window closes.
 - Remove administrator records or change tier meaning, including apparently unused tiers 1/2.
 - Drop any physical table associated with historical blacklist/profile/tag models or unknown objects.
 - Change foreign keys, indexes, triggers, grants, relationships or shared schemas.
 
 Approval prerequisites are a verified backup/restore, live inventory, external-consumer sign-off,
-a bounded maintenance plan, explicit object names and a reviewed restoration path. This PR requests
-review of the plan only; it does not grant approval to perform these operations.
+a bounded maintenance plan, explicit object names and a reviewed restoration path. The owner authorized the known settings cleanup, which this tool implements reversibly.
+Deleting recovery/history data or guessing unknown live table ownership is not part of that tool.
