@@ -11,8 +11,9 @@ class CoastalGuideCMD(commands.Cog):
         self.bot = bot
         self.sessions = set()
 
-    @app_commands.command(name="guide", description="Agree to the Coastal Craft Players Guide!")
-    @op_team()
+    @app_commands.command(
+        name="guide", description="Agree to the Coastal Craft Players Guide!"
+    )
     async def guide(self, interaction: discord.Interaction):
         await run_guide(self, interaction)
 
