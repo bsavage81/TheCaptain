@@ -20,6 +20,9 @@ class BotData(BaseModel):
     bot_spam_channel_coastal = BigIntegerField(default=0)
     server_id_coastal = BigIntegerField(default=0)
 
+    class Meta:
+        table_name = "botdata"
+
 
 class Administrators(BaseModel):
     """
@@ -44,6 +47,9 @@ class Administrators(BaseModel):
     id = AutoField()
     discordID = BigIntegerField(unique=True)
     TierLevel = IntegerField(default=1)
+
+    class Meta:
+        table_name = "administrators"
 
 
 tables = {"administrators": Administrators, "botdata": BotData}

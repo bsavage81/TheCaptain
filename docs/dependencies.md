@@ -1,5 +1,8 @@
 # Dependency review
 
+Current target: Python 3.15.2 and Peewee 4.5.3, validated as documented in runtime-upgrade.md.
+The earlier dependency baseline below is historical.
+
 Checked October 27, 2026. No reliable deployment lock existed in the repository. The old main
 could not provide a working runtime baseline because importing it required live credentials and
 queried tables before bootstrap. After those repairs, 17 focused offline tests passed with
@@ -11,7 +14,7 @@ The same tests passed after upgrading, before expanding coverage. Direct runtime
 are now inventoried in `requirements.in` with full pinned transitive closure in `requirements.txt`:
 discord.py 2.7.1; jishaku 2.7.5; Peewee 3.19.0; gspread 6.2.1; oauth2client 4.1.3;
 python-dotenv 1.2.4; PyMySQL 1.2.3. Exact versions came from official PyPI metadata. Peewee 4.5.3
-exists, but a major ORM upgrade is intentionally deferred while preserving Captain's schema.
+was initially deferred; it is now selected and regression-tested while preserving Captain's schema.
 The explicit MySQL driver is required by Peewee, rather than assumed to exist on the host.
 
 Test dependencies are pinned separately. The first pip-audit run found PYSEC-2026-1845
