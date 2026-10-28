@@ -171,3 +171,41 @@ def test_mysql_forward_path_with_realistic_tuple_results(rename_failure):
         assert tables["botdata"]["rows"]==[(1,"⚓!")]
         assert tables[ARCHIVE]["rows"]==[(1,"⚓!"),(2,"retired")]
     assert not any(sql.startswith(("DROP ","DELETE ","TRUNCATE ")) for sql in statements)
+
+
+def test_custom_check_constraint_blocks_cleanup(tmp_path):
+    backend=SqliteDatabase(tmp_path/"checked.sqlite")
+    database.db.initialize(backend)
+    with backend.connection_context():
+        backend.execute_sql("CREATE TABLE botdata(id INTEGER PRIMARY KEY, prefix TEXT NOT NULL CHECK(length(prefix)>0))")
+        backend.execute_sql("INSERT INTO botdata VALUES (1, '!')")
+    with pytest.raises(ValueError,match="CHECK constraints"):
+        cleanup(backend,**APPLY)
+
+
+def test_database_tls_defaults_and_explicit_self_signed_mode():
+    import ssl
+    cfg=dict(database_schema="synthetic",database_ip="example.invalid",database_username="synthetic",database_password="synthetic")
+    verified=database.make_database(cfg)
+    context=verified.connect_params["ssl"]
+    assert context.check_hostname and context.verify_mode==ssl.CERT_REQUIRED
+    opted_in=database.make_database({**cfg,"database_ssl_mode":"self_signed"})
+    context=opted_in.connect_params["ssl"]
+    assert not context.check_hostname and context.verify_mode==ssl.CERT_NONE
+    with pytest.raises(ValueError):database.make_database({**cfg,"database_ssl_mode":"disabled"})
+
+
+@pytest.mark.parametrize("cipher",["TLS_AES_256_GCM_SHA384",""])
+def test_runtime_refuses_unencrypted_database_connections(monkeypatch,cipher):
+    from types import SimpleNamespace as NS
+    cursor=Mock();cursor.fetchone.return_value=("Ssl_cipher",cipher)
+    manager=Mock();manager.__enter__=Mock(return_value=cursor);manager.__exit__=Mock(return_value=False)
+    connection=NS(cursor=lambda:manager,close=Mock())
+    monkeypatch.setattr(MySQLDatabase,"_connect",lambda self:connection)
+    backend=database.EncryptedMySQLDatabase("synthetic")
+    if cipher:
+        assert backend._connect() is connection
+        connection.close.assert_not_called()
+    else:
+        with pytest.raises(ConnectionError):backend._connect()
+        connection.close.assert_called_once()

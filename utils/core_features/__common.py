@@ -13,7 +13,7 @@ def load_settings(path=None, environ=None):
     path = ROOT / "botconfig.json" if path is None else path
     config = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
     config = {**LEGACY_IDS, **SHEET_DEFAULTS, **config}
-    for key in ("token", "database_ip", "database_port", "database_username", "database_password", "database_schema", "bot_type"):
+    for key in ("token", "database_ip", "database_port", "database_username", "database_password", "database_schema", "database_ssl_mode", "database_ssl_ca", "bot_type"):
         if key in environ:
             config[key] = environ[key]
     # Compatibility guard: never repurpose a retired instance as production silently.

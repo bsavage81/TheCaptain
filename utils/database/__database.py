@@ -1,4 +1,6 @@
 """Captain schema. Importing this module never connects or creates tables."""
+import ssl
+from utils.core_features.__constants import ROOT
 from peewee import AutoField, Model, IntegerField, TextField, BigIntegerField, DatabaseProxy, MySQLDatabase
 
 db = DatabaseProxy()
@@ -65,11 +67,36 @@ def is_administrator(user_id, tier=3):
             (Administrators.discordID == user_id) & (Administrators.TierLevel >= tier)).exists()
 
 
+class EncryptedMySQLDatabase(MySQLDatabase):
+    """Refuse operational queries unless the driver negotiated encrypted transport."""
+    def _connect(self):
+        connection = super()._connect()
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute("SHOW SESSION STATUS LIKE 'Ssl_cipher'")
+                if not cursor.fetchone()[1]:
+                    raise ConnectionError("Encrypted database transport is required")
+            return connection
+        except Exception:
+            connection.close()
+            raise
+
+
 def make_database(settings):
-    return MySQLDatabase(
+    mode = settings.get("database_ssl_mode", "verify_identity")
+    if mode not in ("verify_identity", "self_signed"):
+        raise ValueError("database_ssl_mode must be verify_identity or self_signed")
+    ca = settings.get("database_ssl_ca")
+    context = ssl.create_default_context(cafile=str(ROOT / ca) if ca else None)
+    if mode == "self_signed":
+        # Explicit owner opt-in; transport remains encrypted, peer identity is not verified.
+        context.check_hostname = False
+        context.verify_mode = ssl.CERT_NONE
+    return EncryptedMySQLDatabase(
         settings["database_schema"], host=settings["database_ip"],
         port=int(settings.get("database_port", 3306)),
-        user=settings["database_username"], password=settings["database_password"])
+        user=settings["database_username"], password=settings["database_password"],
+        ssl=context, charset="utf8mb4", connect_timeout=10, read_timeout=30, write_timeout=30)
 
 
 def ensure_production_row():

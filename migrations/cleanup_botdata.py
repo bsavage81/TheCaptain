@@ -50,6 +50,11 @@ def _dependencies(backend):
             if any(index.name != "PRIMARY" for index in backend.get_indexes(table)):
                 raise CleanupRefused("Custom settings indexes need manual review")
     if isinstance(backend, SqliteDatabase):
+        for table in (ACTIVE, ARCHIVE):
+            if table in names:
+                ddl = backend.execute_sql("SELECT sql FROM sqlite_master WHERE type='table' AND name=?", (table,)).fetchone()[0]
+                if re.search(r"\bCHECK\s*\(", ddl, re.IGNORECASE):
+                    raise CleanupRefused("Settings CHECK constraints need manual review")
         if backend.execute_sql("SELECT name FROM sqlite_master WHERE type='trigger'").fetchone():
             raise CleanupRefused("Triggers exist; no schema changed")
     elif isinstance(backend, MySQLDatabase):
@@ -67,6 +72,10 @@ def _dependencies(backend):
                     "SELECT ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=%s", (table,)).fetchone()
                 if not engine or engine[0] != "InnoDB":
                     raise CleanupRefused("Cleanup requires InnoDB settings tables")
+        checks = backend.execute_sql(
+            "SELECT COUNT(*) FROM information_schema.TABLE_CONSTRAINTS WHERE CONSTRAINT_SCHEMA=DATABASE() AND TABLE_NAME IN ('botdata','captain_botdata_legacy') AND CONSTRAINT_TYPE <> 'PRIMARY KEY'").fetchone()[0]
+        if checks:
+            raise CleanupRefused("Additional settings constraints need manual review")
         for catalog in ("TRIGGERS", "ROUTINES", "EVENTS"):
             schema_column = {"TRIGGERS": "TRIGGER_SCHEMA", "ROUTINES": "ROUTINE_SCHEMA", "EVENTS": "EVENT_SCHEMA"}[catalog]
             query = f"SELECT COUNT(*) FROM information_schema.{catalog} WHERE {schema_column}=DATABASE()"
