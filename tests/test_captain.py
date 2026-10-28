@@ -111,7 +111,7 @@ async def test_registration_exactly_once():
     assert names(101) == ["applycoastal"]
     expected = ["addpoi_end", "addpoi_end_returngateway", "addpoi_endcity_claim", "addpoi_nether", "addpoi_overworld", "approveapp", "denyapp", "guide"]
     assert names(102) == sorted(expected)
-    assert names(103) == sorted(expected)
+    assert names(103) == sorted(expected + ["applycoastal"])
     assert [c.name for c in bot.tree.get_commands()] == ["repeat"]
     assert bot.get_command("sync") is not None
     for cmd in bot.tree.get_commands(guild=discord.Object(103)):
