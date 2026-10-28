@@ -37,3 +37,10 @@ asked for current guide content; no replacement URLs, cells or Discord IDs will 
 Deployment remains manual on main. No panel API key, restart workflow or bot shutdown is part of
 this task. A single production writer must own each Sheet; retiring BETA is an operator action,
 not something this branch does to running services.
+
+## Owner clarification received during implementation
+
+The owner supplied Season 10 web/PDF guide links, the question “Who knows?”, and explicitly approved
+case-insensitive substring acceptance of “armadillo”. The Drive logo was subsequently superseded by
+the supplied Discord CDN IMG_8282.png link. These are current defaults in constants/config examples;
+no guide replacement content or spreadsheet cell layout was invented.

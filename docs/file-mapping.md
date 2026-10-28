@@ -21,3 +21,13 @@ Each entry point adds its cog once. Utilities load once through `cf_main`. No em
 files were introduced for symmetry. No active feature reads a local image/text asset, so no
 unused files were moved into an artificial `data/` directory; legacy assets remain in place.
 Archived source keeps historical imports and is intentionally not runnable as an extension.
+
+## Season 10 follow-up
+
+Existing feature packages stay in place; no second architecture rewrite. Configurable title/key and
+account validation remain in `utils/integrations/__google_sheets.py`; confirmed content defaults in
+`utils/core_features/__constants.py`; guide selection/matching in `utils/coastal_guide/__cg_logic.py`.
+`migrations/single_production.py` adds a read-only-by-default inventory and explicit additive bootstrap.
+`tests/test_season10.py` extends the existing suite. Empty `utils/events/__init__.py` and inactive
+root `workflows/` security examples were removed after reference checks. Active CI remains in
+`.github/workflows/`; archive files and historical assets are preserved unchanged.

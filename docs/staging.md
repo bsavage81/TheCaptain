@@ -1,80 +1,68 @@
-# Staging and rollback checklist
+# Single-deployment verification and rollback
 
-No live checks below were executed during implementation. Run them with a dedicated staging
-Discord application, staging guilds, separate MySQL schema and synthetic copies of the Sheets.
-Never use a production token, applicant records, or production Sheets for validation.
+This is an operator checklist, not an executed deployment log. There is one production bot;
+no separate BETA deployment or database is required. Offline tests use synthetic SQLite and fake
+Discord/Sheets. Any manual integration checks must be separately authorized and use isolated
+resources/synthetic records; do not exercise writes against production Sheets as a test.
 
-## Before startup
+## Before an approved rollout
 
-1. Review the local commits and `file-mapping.md`. Preserve a copy of current deployment code,
-   its Python environment/lock, private config and service manager configuration outside Git.
-   Record current `main` revision; the supplied baseline is `24535b9`.
-2. Confirm repository identity. The local origin still says TheOldKing; verify the intended
-   bsavage81/TheCaptain destination before any future push. No remote configuration was changed.
-3. Install `requirements-dev.txt` into a clean Python 3.12 environment; run pip check,
-   compileall and pytest. Review the dependency audit and hosted CI results when available.
-4. Configure every guild/channel/role ID for staging, including legacy default overrides.
-   Use `bot_type=BETA`, explicit staging owner_ids, and a dedicated MySQL schema. Test both
-   a fresh schema and a copy of the existing Captain schema with synthetic rows only.
-5. Prepare isolated staging service account access to files with the exact titles
-   `CCS9 Realm Application` and `Coastal Markers`. Preserve worksheet names, metadata rows,
-   question columns, formulas/formatting, insert positions and status values. Duplicate titles
-   can be ambiguous under gspread title lookup; ensure only intended staging files are accessible.
-6. Confirm only one process can write these Sheets. BETA/STABLE must not share them. Set host
-   timezone deliberately. Configure Discord members/message-content intents and role hierarchy.
+1. Review the PR against main `6464132`; do not merge/deploy until the owner approves. Save current
+   operational code, dependencies, private `.env`/JSON and panel settings outside Git. Verify restore.
+2. Confirm repository `bsavage81/TheCaptain`, branch main and correct panel server `5ff9cb52`.
+   Deployment/restart stays manual; this branch adds no panel credentials or restart workflow.
+3. Install locked requirements into Python 3.12; run compileall, Ruff, pytest and pip check. Review
+   hosted CI/security checks and `docs/validation.md`. No live secrets belong in CI.
+4. Keep the current production schema and existing row 1. Follow `database-audit.md` for a private
+   backup, read-only inventory and explicit fresh-schema bootstrap if needed. Startup does no DDL.
+   Do not delete row 2, columns, tables or administrator records. Remove production bot_type;
+   a leftover non-STABLE value is intentionally rejected to avoid starting the wrong instance.
+5. Preserve all configured guild/channel/role/owner IDs. PBtest is optional; retain an existing value
+   if its command scope is still wanted. Verify OP Team permission intent and role hierarchy.
+6. Supply the existing private Captain creds.json through the deployment's secret-file mechanism.
+   Confirm it belongs to the documented dedicated account and that both Season 10 files are shared.
+   Prefer configured file IDs over ambiguous duplicate titles. Do not modify their data for validation.
+7. Review the confirmed Season 10 guide defaults and owner-supplied Discord logo. Confirm links are
+   accessible to the intended members and Discord can retrieve the image. Refresh configurable
+   signed CDN links if the supplied URL is no longer fetchable; do not invent replacement assets.
+8. Ensure only one process can write these Sheets. Permanently retiring/stopping BETA is an explicit
+   operator action during the maintenance window, never something this branch does automatically.
+   Do not overlap old/new writers or use Git branch names as deployment-mode selectors.
 
-## Live staging checks
+## Manual checks on isolated resources, with authorization
 
-1. Start from a directory other than the checkout. Verify only intended extensions/cogs load,
-   one selected BotData row exists, original fields/defaults persist, configured owners seed only
-   an empty administrator table, and no commands sync automatically.
-2. Explicitly sync only staging guild commands with a staging administrator. Check the MRP
-   application command, Coastal/PBtest command sets (including every End variant), global repeat,
-   and upstream jishaku. Test authorized/unauthorized tier-3 sync; cancel/timeout its confirmation.
-   Global/all sync is outside this validation checklist.
-3. Check avatar policy, MRP channel rejection, OP Team allow/deny (name and opted-in ID), and
-   guide role intent with the owner. Do not silently broaden guide access if intent differs.
-4. Complete all three application pages with synthetic data. Attempt another user's buttons/modal,
-   expire a view, restart midway, double-click Start/Continue, and try a duplicate final callback.
-   Verify E:S order, A:T row 3 insertion, timestamp, notification embeds/reactions and no log data.
-5. Approve/deny synthetic IDs after inserting a newer application. Verify column U Yes/No and
-   the intended member (username lookup, then numeric-ID fallback). Test absent member, blocked DM,
-   missing invite channel and invite failure. Confirm saved decision remains visible on DM failure.
-6. Test wrong guide answer then corrected case/whitespace, timeouts at first/retry/agreement waits,
-   another user's message, overlapping sessions and blocked DMs. Verify both Coastal roles and
-   response channel notification; reconcile partial role assignment if hierarchy blocks one role.
-   Season 9 prompts/links were preserved; operators must confirm their continuing suitability.
-7. Submit each of five POI commands using synthetic coordinates. Verify row 2, dimensions,
-   fonts/icons/colors, prompt labels, notification routing, ownership and timeout handling.
-8. Submit concurrent applications/POIs within this single process and check distinct max+1 IDs.
-   Simulate transient Sheets errors and failures after successful writes; confirm no blind insert
-   retry. Disconnect after a write and reconcile the possible saved row before retrying manually.
-   Check notification/DM/invite partial failures and lack of applicant content in logs.
-9. Restart twice, confirm temporary views expire and unrelated inherited question views never load.
-   Inspect MySQL schema against the original; no migration should have occurred.
+1. Launch from another working directory. Verify production row 1 prefix, unchanged administrator
+   records, six intended extensions, shutdown and reconnect behavior. No startup slash-command sync.
+2. Check MRP application scope and Coastal staff/POI/guide scopes, plus optional existing PBtest scope.
+   Check owner/tier-3 sync access, OP Team allow/deny, avatar policy and user-owned UI callbacks.
+   Manual sync remains available; target only the reviewed test guild. Global/all sync is not a test.
+3. Complete three application pages with synthetic values. Verify ownership, expiration/restart,
+   duplicate callbacks, row-3 insertion, E:S answer order, timestamp and U=Yes/No review status.
+   Check failed notifications/DMs and member lookup without resubmitting an uncertain write.
+4. Test guide “Who knows?” with “The ARMADILLO knows”, wrong-answer retry, first/retry/agreement
+   timeout, another user's messages, blocked DMs, role hierarchy and both Coastal role assignments.
+   Confirm notifications say Season 10 and the new realm name; no roles when guide config is incomplete.
+5. Submit each five POI variants using synthetic coordinates against isolated copied Sheets. Verify
+   dimensions, row 2, 14 columns, icons/fonts/colors and notifications. Preserve Questions B1:B6.
+6. Verify application title/ID selection independently, all four marker worksheets, account mismatch,
+   inaccessible files and invalid metadata. Initialization failures must be clear and sanitized.
+7. Check concurrent application/POI IDs within one process, worker cancellation, status-row shifts,
+   timeout/partial failures, no automatic insert retry and absence of applicant answers in logs.
 
 ## Rollback
 
-1. Stop the new process; ensure it cannot restart automatically or overlap another writer.
-2. Snapshot the current database and Sheets before any rollback. Inspect uncertain writes and
-   pending notifications/invites; record IDs rather than reposting applications. Do not delete
-   valid applications or overwrite the entire Sheet with an older copy.
-3. Restore the previously saved deployment code and matching dependency environment/config.
-   Existing table/column and Sheet contracts remain compatible; no reverse migration is expected.
-   Fresh BETA row 2 may be left in place, and original persistent_views flags were not modified.
-4. Review startup before restarting the old revision: it has documented import-time bootstrap
-   defects and may require its original environment. Do not assume `24535b9` runs cleanly on
-   the newly pinned dependencies. Prefer a known operational deployment snapshot.
-5. Verify only one writer is running. Slash commands are not automatically reverted by code
-   rollback; any separately authorized staging/production command changes need an explicit
-   operator sync against the reviewed target guild. Never run global sync as a rollback shortcut.
-6. Reconcile saved status vs failed Discord notifications and revoke unused one-use invites.
-   Preserve audit evidence without storing applicant answers in logs or repository fixtures.
+1. Owner stops the new process and prevents overlap. Capture current database/Sheet backups and
+   reconcile uncertain saved rows, decisions, roles and unused invites before any retry.
+2. Restore the saved operational code and matching environment/config, preserving existing data.
+   The prior main supports title-configured Season 10 Sheets, but its guide is Season 9; review
+   that limitation before using it. Restore `bot_type=STABLE` only if the old code requires it.
+3. Physical legacy rows/columns and administrator records are intact. Normal consolidation needs
+   no reverse SQL. Newly bootstrapped tables/row should be left intact unless a separate approved
+   restoration plan proves they can be removed without losing data.
+4. Verify one writer, the production row/prefix and current guild/channel mappings. Do not revive
+   the retired deployment or use global command sync as a rollback shortcut. Any separately approved
+   command publication needs an explicit reviewed operator sync.
+5. Keep audit evidence in private storage without applicant content or credentials in repository logs.
 
-## Remaining uncertainties
-
-Discord API delivery/permissions, MySQL server auth/TLS and existing schema compatibility,
-service-account authorization, current season content suitability and real Sheet formulas/formatting
-require staging evidence. Multiple writers and durable exactly-once delivery are unsupported;
-see `baseline.md`. No production deployment, command sync, Discord messages or production service
-access took place during implementation.
+MySQL server compatibility/permissions, service account sharing, real Sheet formatting/formulas,
+Discord delivery and the exact live bot-retirement state remain manual verification items.

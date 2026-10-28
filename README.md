@@ -1,12 +1,13 @@
-# TheCaptain
+# The Captain — Coastal Craft Season 10
 
-Separately configured Coastal Craft bot, including Coastal applications in Realm Portal.
-PortalBot is an architectural reference only. Captain retains its own database and Sheets contracts.
+The Captain is a standalone bot for **Coastal Craft Season 10: The Mighty Mesa Reborn**.
+It handles Coastal applications in the Realm Portal community and keeps its own service account,
+configuration, database and deployment. PortalBot is a read-only architectural reference.
+There is one production bot. Git development branches do not select different bots or database rows.
 
-## Installation and offline checks
+## Install and test locally
 
-Tested locally with CPython 3.12.14 on Windows. CI targets Python 3.12 on Windows and Linux.
-Use a separate virtual environment, then install the complete pinned dependency closure:
+Tested runtime: CPython 3.12.14. CI runs on Python 3.12 on Windows and Linux.
 
 ```shell
 python -m venv .venv
@@ -14,54 +15,114 @@ python -m venv .venv
 # Linux: source .venv/bin/activate
 python -m pip install -r requirements-dev.txt
 python -m pip check
-python -m compileall -q main.py utils tests
+python -m compileall -q main.py utils migrations tests
+python -m ruff check --select F main.py utils migrations tests
 python -m pytest -q
 ```
 
-For runtime only, install `requirements.txt`. `requirements.in` inventories direct dependencies.
-Tests use synthetic Discord/Sheets objects and temporary SQLite databases; they block external
-connections and need no credentials. Windows asyncio requires local loopback socketpairs.
-Never point test configuration at a live database or Sheet.
+For runtime only, install `requirements.txt`. No Discord, MySQL or Google credentials are needed
+for tests. Tests block external connections, use synthetic data and temporary SQLite databases,
+and allow loopback only for Windows asyncio internals. Never use production data as fixtures.
 
-## Configuration and startup
+## Private production configuration
 
-Copy `botconfig.example.json` to `botconfig.json` and `.env.example` to `.env` beside `main.py`.
-Replace every zero with the intended guild/channel/role ID. Keep `creds.json` private; share only
-staging spreadsheets with the staging service account. Relative configuration and credential paths
-resolve from the repository root, independently of the current directory. The service account must
-have the existing Sheets/Drive scopes. The bot needs members/message-content intents for legacy
-member lookups and conversational commands, plus suitable channel permissions and role hierarchy.
+Copy `botconfig.example.json` to `botconfig.json` and `.env.example` to `.env`. Keep both private.
+Replace the zero guild/channel IDs with the **existing production** values. Keep the existing
+MySQL schema name, token, owners and roles; do not copy example IDs over working configuration.
+The lower-case `token` and `database_*` environment keys still override their JSON counterparts.
+Startup reads `botdata` row **1** and preserves it unchanged. Remove `bot_type` from the production
+environment/JSON. A legacy `STABLE` value is tolerated and discarded; any other value is rejected,
+so a retired BETA instance cannot silently become another production writer. Nothing in this
+repository stops either currently running bot; retirement and rollout require operator action.
 
-The existing lower-case `token`, `bot_type`, and `database_*` environment keys remain supported;
-environment values override JSON for these keys. `bot_type` is exactly `STABLE` (row 1) or `BETA`
-(row 2); default is STABLE. Existing BotData row values are preserved. New rows use Captain model
-defaults. Owners are seeded only when Administrators is empty; `owner_ids` defaults to the legacy
-owner. Never rely on Discord application owner IDs before login. Admin/owner queries run off-loop.
+Required JSON IDs: `MRP`, `Coastal`, `CoastalMRP`, `CoastalApplications`, `CoastalOPTeam`,
+`CoastalMapUpdates`. `MRP`/`CoastalMRP` are still required for applications in Realm Portal.
+`PBtest` is an optional existing guild scope, not another deployment: omit it when unused or retain
+its current ID to preserve command availability. `OPTeamRole` retains the `OP Team` name check;
+an integer opts into a role-ID check. Notification roles use `CoastalOPTeam` separately.
+The guide/invite ID defaults remain unchanged; confirm their current purpose rather than inventing IDs.
 
-`OPTeamRole` defaults to the existing role **name** `OP Team`; an integer opts into checking a role
-ID in the invoking guild. `CoastalOPTeam` remains the Coastal notification role ID. The four new
-Coastal guide/invite keys default to the legacy IDs shown in the example; override all four for
-staging. `MRP`, `PBtest`, `Coastal`, `CoastalMRP`, `CoastalApplications`, `CoastalMapUpdates`, and
-`CoastalOPTeam` keep their existing meanings. Unknown legacy JSON keys are tolerated.
+## Season 10 Sheets and service account
 
-Run `python /absolute/path/to/TheCaptain/main.py` only after reviewing staging configuration.
-Startup explicitly initializes the database, bootstraps the selected row, loads Sheets metadata in
-a worker, and registers six extensions in fixed order. It never syncs commands automatically.
-The existing tier-3 `sync <guild|global|all>` prefix command remains an explicit operator action;
-use only a staging guild during validation. Jishaku remains owner-only upstream functionality.
+Use the existing private `creds.json` for:
+`thecaptain@thecaptain-513018.iam.gserviceaccount.com`.
+Both production files have already been shared with that account, per the owner. Enable the
+required Google Sheets/Drive APIs and preserve the existing scopes. No credentials are created,
+replaced or stored in this repository. Startup rejects another service account before authorization.
+The supplied file is read only during explicit startup, never during imports or offline tests.
 
-Inherited Flask hooks, public traceback gists, question suggestions, pygit2 version reporting,
-and Flask/Sentry wiring were removed after active dependency tracing. There is no HTTP server.
-`sentry_dsn` is tolerated but does not enable telemetry; introducing sanitized telemetry is a
-separate change. Legacy archived features and images are preserved and excluded from loading.
-No current feature needs a persistent view: application/start/continue views and modals expire
-after five minutes and lose their state on restart. The old BotData `persistent_views` column
-is retained for schema compatibility and no longer controls process registration.
+```json
+{
+  "credentials_path": "creds.json",
+  "application_sheet": "CCS10 Realm Application",
+  "markers_sheet": "Coastal Markers S10",
+  "application_sheet_id": null,
+  "markers_sheet_id": null
+}
+```
 
-## Review, staging and rollback
+By title, use the Season 10 defaults above or explicit accessible file titles. Duplicate accessible
+titles may be ambiguous. Prefer keys when available: set `application_sheet_id` and/or
+`markers_sheet_id` to the actual key from `/spreadsheets/d/<key>/...`. A nonempty key uses
+`open_by_key()` and takes precedence over the title for that file. No spreadsheet IDs are invented.
+Relative credential paths resolve from the repository root, independently of the launch directory.
 
-See [file mapping](docs/file-mapping.md), [baseline and contracts](docs/baseline.md),
-[dependency review](docs/dependencies.md), [offline validation report](docs/validation.md),
-and the [staging/rollback checklist](docs/staging.md).
-The single-writer and partial-failure limitations in those documents are deployment requirements.
-No deployment or live Discord/MySQL/Sheets validation was performed as part of this refactor.
+Applications use the first worksheet: row 1 metadata, row 2 question labels, applicant insertion
+at row 3. Markers use `Overworld`, `Nether`, `End`, `Questions`; prompts remain `Questions!B1:B6`,
+marker insertion remains row 2. Existing column order and Yes/No approval statuses are unchanged.
+Startup validates worksheet access and question labels without writing any Sheet data. Failures
+are sanitized so Google responses or credential contents are not printed in error messages.
+Exactly one bot process may write these files. The in-process lock is not a distributed lock;
+uncertain writes and failed notifications still require operator reconciliation.
+
+## Season 10 guide and logo
+
+Defaults are the owner-confirmed [web guide](https://docs.google.com/document/d/1FGK84rUyrC6LX0UrnW7IxzjupYPEbOCo7ccpQlSmvu8/edit?usp=drive_link)
+and [PDF guide](https://drive.google.com/file/d/1zMmjQTzZeEHUHgjxNZsNnGe9ubw-3QCW/view?usp=drive_link).
+Question: **Who knows?** Accepted keyword: **armadillo**, anywhere in the response,
+case-insensitively (for example, “The Armadillo knows”). This deliberately follows the owner's
+loose-acceptance instruction. Existing retries, timeouts, ownership and role checks remain.
+The default logo is the owner's replacement Discord CDN image, configured in `logo_url`.
+
+Override `guide_web_url`, `guide_pdf_url`, `guide_question`, `guide_answer`, `guide_answer_match`
+(`contains` or `exact`) and `logo_url` in JSON as needed. To source guide values from the Season 10
+markers `Questions` worksheet, set `guide_cells` to an object mapping any of `web_url`, `pdf_url`,
+`question`, `answer` to owner-verified uppercase A1 addresses. These cells override the corresponding
+JSON/default values. No guide cells are assumed: B1:B6 belongs to POI prompts. At least one guide
+link, a question and an answer are required; explicitly blank/missing content produces a clear
+operator-configuration response without assigning roles. No old Season 9 links or logo remain active.
+
+## Database preparation and startup
+
+Review [database inventory and migration](docs/database-audit.md) first. Existing production tables,
+row 1, retired row 2, unused compatibility columns and administrator records are preserved. Startup
+performs no table/schema DDL. For a fresh database, the explicit additive migration must be reviewed
+and run by an operator; existing healthy production data needs no physical migration:
+
+```shell
+python -m migrations.single_production
+# Read-only metadata/preflight by default. Only after backup and approval:
+python -m migrations.single_production --apply
+```
+
+The tool reads database environment keys from the root `.env`, prints schema/row-presence metadata
+only, and never deletes, drops, alters or copies a retired row into production. An existing nonempty
+`botdata` table missing row 1 fails for owner-reviewed restoration. `--apply` only creates missing
+Captain tables and bootstraps a default row 1 in a fresh/empty table. It does not grant permissions.
+Runtime retains configured owner seeding only when Administrators is empty.
+
+After approved configuration review, start `python /absolute/path/to/TheCaptain/main.py`.
+Database and Sheets initialization are explicit; extensions register once in a fixed order.
+There is no automatic slash-command sync. Tier-3 manual `sync <guild|global|all>` and upstream
+owner-only jishaku are preserved. Application views/modals expire in five minutes and lose state
+on restart; the retained `persistent_views` database field no longer drives registration.
+Deployment remains manual on `main`; no panel restart workflow was added.
+
+## Review and rollout
+
+See [Season 10 discovery](docs/season10-discovery.md), [database audit](docs/database-audit.md),
+[file mapping](docs/file-mapping.md), [validation](docs/validation.md), and
+[deployment verification and rollback](docs/staging.md). Historical contracts and prior reports
+are explicitly labelled as history. Archive source remains unchanged and never loads.
+No live Discord, MySQL or Sheets verification, deployment, bot retirement or destructive database
+operation was performed by this maintenance change.
