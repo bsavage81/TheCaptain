@@ -1,14 +1,9 @@
-import asyncio
-import sys
-import time
-from datetime import timedelta
 from typing import Union, Literal
 
 import discord
 from discord import ui, ButtonStyle
 from discord.ext import commands
 
-from utils.database import __database as database
 from utils.helpers.__checks import is_botAdmin3
 from utils.core_features.__common import Colors, ButtonHandler
 from utils.helpers.__logging_module import get_log
@@ -64,7 +59,7 @@ class BackupRegularCommands(commands.Cog):
             embed_confirm = discord.Embed(
                 color=discord.Color.gold(),
                 title="Sync Confirmation",
-                description=f"Are you sure you want to sync globally? This may take 1 hour.",
+                description="Are you sure you want to sync globally? This may take 1 hour.",
             )
             message_confirm = await ctx.send(embed=embed_confirm, view=view)
 
@@ -75,8 +70,8 @@ class BackupRegularCommands(commands.Cog):
                     embed_processing = discord.Embed(
                         color=discord.Color.gold(),
                         title="Sync",
-                        description=f"Syncing slash commands globally..."
-                        f"\nThis may take a while.",
+                        description="Syncing slash commands globally..."
+                        "\nThis may take a while.",
                     )
                     await message_confirm.edit(embed=embed_processing, view=None)
 
@@ -85,7 +80,7 @@ class BackupRegularCommands(commands.Cog):
                     embed_processing = discord.Embed(
                         color=discord.Color.green(),
                         title="Sync",
-                        description=f"Successfully synced slash commands globally!",
+                        description="Successfully synced slash commands globally!",
                     )
                     await message_confirm.edit(embed=embed_processing)
 
@@ -121,7 +116,7 @@ class BackupRegularCommands(commands.Cog):
             embed_confirm = discord.Embed(
                 color=discord.Color.gold(),
                 title="Sync Confirmation",
-                description=f"Are you sure you want to sync all local guild commands?",
+                description="Are you sure you want to sync all local guild commands?",
             )
             message_confirm = await ctx.send(embed=embed_confirm, view=view)
 
@@ -132,8 +127,8 @@ class BackupRegularCommands(commands.Cog):
                     embed_processing = discord.Embed(
                         color=discord.Color.gold(),
                         title="Sync",
-                        description=f"Syncing all local guild slash commands ..."
-                        f"\nThis may take a while.",
+                        description="Syncing all local guild slash commands ..."
+                        "\nThis may take a while.",
                     )
                     await message_confirm.edit(embed=embed_processing, view=None)
 
@@ -143,7 +138,7 @@ class BackupRegularCommands(commands.Cog):
                     embed_processing = discord.Embed(
                         color=discord.Color.green(),
                         title="Sync",
-                        description=f"Successfully synced slash commands in all servers!",
+                        description="Successfully synced slash commands in all servers!",
                     )
                     await message_confirm.edit(embed=embed_processing)
 
