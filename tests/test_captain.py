@@ -76,12 +76,11 @@ def test_fresh_and_existing_schema(tmp_path):
     assert row.id == 1
     with backend.connection_context():
         assert set(backend.get_tables()) == {"botdata", "administrators"}
-        assert set(BotData._meta.fields) == {"id","persistent_views","prefix","bot_spam_channel_coastal","bot_spam_channel_aurafall","bot_type","bot_id","server_id_aurafall","server_id_coastal"}
+        assert set(BotData._meta.fields) == {"id","prefix"}
         row.prefix = "!"
-        row.persistent_views = True
         row.save()
     again = initialize_database(cfg, backend)
-    assert again.prefix == "!" and again.persistent_views
+    assert again.prefix == "!"
     with backend.connection_context():
         assert Administrators.get().discordID == 999
         assert BotData.select().count() == 1

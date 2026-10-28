@@ -132,12 +132,15 @@ def test_retired_mode_is_not_silently_repurposed(tmp_path,old_mode):
 
 def test_production_values_and_legacy_rows_preserved(tmp_path):
     backend=SqliteDatabase(tmp_path/"legacy.sqlite")
-    migrate(backend,apply=True)
+    from legacy_database import LegacyBotData, make_legacy
+    make_legacy(backend)
+    with backend.connection_context():
+        LegacyBotData.create(id=1)
     database.initialize_database({"owner_ids":[999]},backend)
     with backend.connection_context():
-        database.BotData.update(prefix="!",bot_id=123,server_id_coastal=456,bot_type="Stable",persistent_views=True).where(database.BotData.id==1).execute()
-        database.BotData.create(id=2,prefix="?",bot_type="BETA",server_id_aurafall=789)
-        before=list(database.BotData.select().dicts());admins=list(database.Administrators.select().dicts())
+        LegacyBotData.update(prefix="!",bot_id=123,server_id_coastal=456,bot_type="Stable",persistent_views=True).where(LegacyBotData.id==1).execute()
+        LegacyBotData.create(id=2,prefix="?",bot_type="BETA",server_id_aurafall=789)
+        before=list(LegacyBotData.select().dicts());admins=list(database.Administrators.select().dicts())
     planned=migrate(backend)
     assert planned["production_row_present"] and planned["legacy_row_2_present"] and not planned["applied"]
     for _ in range(2):
@@ -145,7 +148,7 @@ def test_production_values_and_legacy_rows_preserved(tmp_path):
     row=database.initialize_database({"owner_ids":[1000]},backend)
     assert row.id==1 and row.prefix=="!"
     with backend.connection_context():
-        assert list(database.BotData.select().dicts())==before
+        assert list(LegacyBotData.select().dicts())==before
         assert list(database.Administrators.select().dicts())==admins
 
 
@@ -166,7 +169,7 @@ def test_only_legacy_row_needs_review_not_inferred_production(tmp_path,apply):
     backend=SqliteDatabase(tmp_path/"retired.sqlite");database.db.initialize(backend)
     with backend.connection_context():
         backend.create_tables(list(database.tables.values()))
-        database.BotData.create(id=2,bot_type="BETA",prefix="?")
+        database.BotData.create(id=2,prefix="?")
     with pytest.raises(ValueError,match="No production row 1"):
         migrate(backend,apply=apply)
     with pytest.raises(ValueError,match="Production BotData row 1 is missing"):

@@ -1,5 +1,5 @@
 """Captain schema. Importing this module never connects or creates tables."""
-from peewee import AutoField, Model, IntegerField, TextField, BigIntegerField, BooleanField, DatabaseProxy, MySQLDatabase
+from peewee import AutoField, Model, IntegerField, TextField, BigIntegerField, DatabaseProxy, MySQLDatabase
 
 db = DatabaseProxy()
 
@@ -11,20 +11,10 @@ class BaseModel(Model):
 
 
 class BotData(BaseModel):
-    """Legacy-compatible storage; production reads row 1.prefix only.
-
-    Other columns remain mapped for safe inserts and rollback. They are not evidence
-    of active features and may not be removed without a database consumer audit.
-    """
+    """Production singleton. Retired settings live only in the migration archive."""
     id = AutoField()
-    persistent_views = BooleanField(default=False)
     prefix = TextField(default=">")
-    bot_spam_channel_coastal = BigIntegerField(default=0)
-    bot_spam_channel_aurafall = BigIntegerField(default=0)
-    bot_type = TextField(default="Stable")
-    bot_id = BigIntegerField(default=0)
-    server_id_aurafall = BigIntegerField(default=0)
-    server_id_coastal = BigIntegerField(default=0)
+
 
 class Administrators(BaseModel):
     """
@@ -89,5 +79,7 @@ def ensure_production_row():
         return row
     if BotData.select().exists():
         raise ValueError("Production BotData row 1 is missing in a nonempty table. Restore the verified production row before startup; no legacy row was copied.")
-    row, _ = BotData.get_or_create(id=1, defaults={"bot_type": "STABLE"})
+    if {column.name for column in db.get_columns("botdata")} != {"id", "prefix"}:
+        raise ValueError("Empty legacy BotData schema requires an explicit reviewed migration before startup")
+    row, _ = BotData.get_or_create(id=1)
     return row
