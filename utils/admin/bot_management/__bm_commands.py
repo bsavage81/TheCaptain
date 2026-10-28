@@ -5,27 +5,20 @@ from datetime import timedelta
 from typing import Union, Literal
 
 import discord
-import psutil
 from discord import ui, ButtonStyle
 from discord.ext import commands
-from dotenv import load_dotenv
-from sentry_sdk import Hub
 
 from utils.database import __database as database
-from utils.helpers.__checks import is_botAdmin2
 from utils.helpers.__checks import is_botAdmin3
 from utils.core_features.__common import Colors, ButtonHandler
-from utils.core_features.__common import Others
 from utils.helpers.__logging_module import get_log
 
 _log = get_log(__name__)
-load_dotenv()
 
 
 class BackupRegularCommands(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.client = Hub.current.client
 
     @commands.command()
     @is_botAdmin3

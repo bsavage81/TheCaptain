@@ -44,6 +44,7 @@ def get_log(name) -> logging.Logger:
     formatter = ColourFormatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
     stream_handler = logging.StreamHandler()
     stream_handler.setFormatter(formatter)
-    logger.addHandler(stream_handler)
+    if not logger.handlers:
+        logger.addHandler(stream_handler)
 
     return logger

@@ -1,201 +1,80 @@
-"""
-Copyright (C) Minecraft Realm Portal - All Rights Reserved
- * Permission is granted to use this application as a code reference for educational purposes.
- * Written by Minecraft Realm Portal, Development Team. August 2023
-"""
-
-__author__ = "M.R.P Bot Development"
-
+"""Thin Captain lifecycle. Import is safe without configuration or credentials."""
+import asyncio
 import logging
-import os
 import time
-from pathlib import Path
-
 import discord
-from alive_progress import alive_bar
 from discord import app_commands
 from discord.ext import commands
-from discord_sentry_reporting import use_sentry
-from dotenv import load_dotenv
-from pygit2 import Repository, GIT_DESCRIBE_TAGS
-from sentry_sdk.integrations.flask import FlaskIntegration
-from sentry_sdk.integrations.logging import LoggingIntegration
-
-from utils.database import __database as database
-from utils.core_features.__common import get_bot_data_id
-from utils.helpers.__logging_module import get_log
-from utils.core_features.__special_methods import (
-    on_app_command_error_,
-    initialize_db,
-    on_ready_,
-    on_command_error_,
-    on_command_,
-    before_invoke_,
-)
-
-logger = logging.getLogger("discord")
-logger.setLevel(logging.INFO)
-
-_log = get_log(__name__)
-_log.info("Starting TheOldKing...")
-load_dotenv()
-
-row_id = get_bot_data_id()
-bot_info: database.BotData = (
-    database.BotData.select().where(database.BotData.id == row_id).get()
-)
+from utils.core_features.__constants import EXTENSIONS, ROOT
+from utils.core_features.__common import load_settings
+from utils.core_features.__special_methods import on_app_command_error_, on_command_error_
+from utils.database.__database import initialize_database, is_administrator
+from utils.integrations.__google_sheets import SheetsService
 
 
-def get_extensions():  # Gets extension list dynamically
-    return ["jishaku", "utils.core_features.cf_main", "utils.admin.bot_management.bm_main",
-            "utils.coastal_applications.ca_main", "utils.coastal_guide.cg_main",
-            "utils.coastal_poi.poi_main"]
-
-
-class OKCommandTree(app_commands.CommandTree):
-    def __init__(self, bot):
-        super().__init__(bot)
-        self.bot = bot
-
-    async def interaction_check(self, interaction: discord.Interaction, /) -> bool:
-        # blacklisted_users = [p.discordID for p in database.Blacklist]
+class CaptainCommandTree(app_commands.CommandTree):
+    async def interaction_check(self, interaction):
         if interaction.user.avatar is None:
-            await interaction.response.send_message(
-                "Due to a discord limitation, you must have an avatar set to use this command."
-            )
+            await interaction.response.send_message("Due to a discord limitation, you must have an avatar set to use this command.")
             return False
-        """if interaction.user.id in blacklisted_users:
-            await interaction.response.send_message(
-                "You have been blacklisted from using commands!", ephemeral=True
-            )
-            return False"""
         return True
 
-    async def on_error(
-        self, interaction: discord.Interaction, error: app_commands.AppCommandError
-    ):
-        await on_app_command_error_(self.bot, interaction, error)
+    async def on_error(self, interaction, error):
+        await on_app_command_error_(self.client, interaction, error)
 
 
-class TheOldKing(commands.Bot):
-    """
-    Generates a Timmy Instance.
-    """
-
-    def __init__(self, uptime: time.time):
-        super().__init__(
-            command_prefix=commands.when_mentioned_or(bot_info.prefix),
-            intents=discord.Intents.all(),
-            case_insensitive=True,
-            tree_cls=OKCommandTree,
-            status=discord.Status.online,
-            activity=discord.Activity(
-                type=discord.ActivityType.watching,
-                name=f"over the Portal! | {bot_info.prefix}help",
-            ),
-        )
+class TheCaptain(commands.Bot):
+    def __init__(self, settings, *, sheets=None, database_initializer=initialize_database, admin_check=is_administrator):
+        super().__init__(command_prefix=commands.when_mentioned_or(">"), intents=discord.Intents.all(),
+                         case_insensitive=True, tree_cls=CaptainCommandTree)
+        self.settings = settings
+        self.sheets = sheets if sheets is not None else SheetsService(settings)
+        self.database_initializer = database_initializer
+        self.admin_check = admin_check
         self.help_command = None
-        # self.add_check(self.check)
-        self._start_time = uptime
+        self._start_time = time.time()
+        self._views_registered = False
+
+    async def setup_hook(self):
+        row = await asyncio.to_thread(self.database_initializer, self.settings)
+        self.command_prefix = commands.when_mentioned_or(row.prefix)
+        await self.sheets.initialize()
+        self.application_content = self.sheets.application_content
+        self.poi_content = self.sheets.poi_content
+        for extension in EXTENSIONS:
+            if extension not in self.extensions:
+                await self.load_extension(extension)
+        if not self._views_registered:
+            # No state-free persistent views remain; active application views are temporary.
+            self._views_registered = True
 
     async def on_ready(self):
-        await on_ready_(self)
+        logging.getLogger(__name__).info("TheCaptain ready")
 
-    async def on_command_error(self, ctx: commands.Context, error: Exception):
+    async def is_owner(self, user):
+        return await asyncio.to_thread(self.admin_check, user.id, 3) or await super().is_owner(user)
+
+    async def on_command_error(self, ctx, error):
         await on_command_error_(self, ctx, error)
 
-    async def on_command(self, ctx: commands.Context):
-        await on_command_(self, ctx)
-
-    """async def analytics_before_invoke(self, ctx: commands.Context):
-        await before_invoke_(ctx)"""
-
-    async def setup_hook(self) -> None:
-        with alive_bar(
-            len(get_extensions()),
-            ctrl_c=False,
-            bar="bubbles",
-            title="Initializing Cogs:",
-        ) as bar:
-
-            for ext in get_extensions():
-                try:
-                    await bot.load_extension(ext)
-                except commands.ExtensionAlreadyLoaded:
-                    await bot.unload_extension(ext)
-                    await bot.load_extension(ext)
-                except commands.ExtensionNotFound:
-                    raise commands.ExtensionNotFound(ext)
-                bar()
-        # await bot.tree.set_translator(TimmyTranslator())
-
-    async def is_owner(self, user: discord.User):
-        query = database.Administrators.select().where(
-            (database.Administrators.TierLevel >= 3)
-            & (database.Administrators.discordID == user.id)
-        )
-        if query.exists():
-            return True
-
-        return await super().is_owner(user)
-
-    @property
-    def version(self):
-        """
-        Returns the current version of the bot.
-        """
-        repo = Repository(".")
-        current_commit = repo.head
-        current_branch = repo.head.shorthand
-
-        version = ...  # type: str
-        if current_branch == "HEAD":
-            current_tag = repo.describe(
-                committish=current_commit, describe_strategy=GIT_DESCRIBE_TAGS
-            )
-            version = f"{current_tag} (stable)"
-        else:
-            version = "development"
-        version += f" | {str(current_commit.target)[:7]}"
-
-        return version
-
-    @property
-    def author(self):
-        """
-        Returns the author of the bot.
-        """
-        return __author__
+    async def on_command(self, ctx):
+        if ctx.command and ctx.command.name not in {"sync", "ping", "kill", "jsk", "py", "jishaku"}:
+            await ctx.reply(f":x: This command usage is deprecated. Use `/{ctx.command.name}` instead.")
 
     @property
     def start_time(self):
-        """
-        Returns the time the bot was started.
-        """
         return self._start_time
 
 
-bot = TheOldKing(time.time())
-
-if os.getenv("sentry_dsn") is not None:
-    sentry_logging = LoggingIntegration(
-        level=logging.INFO,  # Capture info and above as breadcrumbs
-        event_level=logging.ERROR,  # Send errors as events
-    )
-
-    # Traceback tracking, DO NOT MODIFY THIS
-    use_sentry(
-        bot,
-        dsn=os.getenv("sentry_dsn"),
-        traces_sample_rate=1.0,
-        integrations=[FlaskIntegration(), sentry_logging],
-    )
-
-initialize_db(bot)
+def main():
+    from dotenv import load_dotenv
+    load_dotenv(ROOT / ".env")
+    settings = load_settings()
+    if not settings.get("token"):
+        raise ValueError("Configure token before startup")
+    logging.basicConfig(level=logging.INFO)
+    TheCaptain(settings).run(settings["token"])
 
 
 if __name__ == "__main__":
-    try:
-        bot.run(os.getenv("token"))
-    except Exception as e:
-        _log.exception(e)
+    main()

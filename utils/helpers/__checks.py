@@ -1,133 +1,21 @@
-"""
-SETUP:
-If you require a specific command to be protected, you can use the @is_botAdmin check or create your own one here!
-"""
-
-import os
-import re
-
-import discord
+import asyncio
 from discord import app_commands
 from discord.ext import commands
-
-from utils.database import __database as database
-
-
-def predicate_LV1(ctx) -> bool:
-    adminIDs = []
-
-    query = database.Administrators.select().where(
-        database.Administrators.TierLevel >= 1
-    )
-    for admin in query:
-        adminIDs.append(admin.discordID)
-
-    return ctx.author.id in adminIDs
+from utils.database.__database import is_administrator
 
 
-is_botAdmin = commands.check(predicate_LV1)
-
-
-def predicate_LV2(ctx) -> bool:
-    adminIDs = []
-
-    query = database.Administrators.select().where(
-        database.Administrators.TierLevel >= 2
-    )
-    for admin in query:
-        adminIDs.append(admin.discordID)
-
-    return ctx.author.id in adminIDs
-
-
-is_botAdmin2 = commands.check(predicate_LV2)
-
-
-def predicate_LV3(ctx):
-    adminIDs = []
-
-    query = database.Administrators.select().where(
-        database.Administrators.TierLevel >= 3
-    )
-    for admin in query:
-        adminIDs.append(admin.discordID)
-
-    return ctx.author.id in adminIDs
+async def predicate_LV3(ctx):
+    return await asyncio.to_thread(is_administrator, ctx.author.id, 3)
 
 
 is_botAdmin3 = commands.check(predicate_LV3)
 
 
-def predicate_LV4(ctx):
-    adminIDs = []
-
-    query = database.Administrators.select().where(
-        database.Administrators.TierLevel >= 4
-    )
-    for admin in query:
-        adminIDs.append(admin.discordID)
-
-    return ctx.author.id in adminIDs
-
-
-is_botAdmin4 = commands.check(predicate_LV4)
-
-
-def slash_is_bot_admin():
-    def predicate(interaction: discord.Interaction) -> bool:
-        admin_ids = []
-
-        query = database.Administrators.select().where(
-            database.Administrators.TierLevel >= 1
-        )
-        for admin in query:
-            admin_ids.append(admin.discordID)
-
-        return interaction.user.id in admin_ids
-
-    return app_commands.check(predicate)
-
-
-def slash_is_bot_admin_2():
-    def predicate(interaction: discord.Interaction) -> bool:
-        admin_ids = []
-
-        query = database.Administrators.select().where(
-            database.Administrators.TierLevel >= 2
-        )
-        for admin in query:
-            admin_ids.append(admin.discordID)
-
-        return interaction.user.id in admin_ids
-
-    return app_commands.check(predicate)
-
-
-def slash_is_bot_admin_3():
-    def predicate(interaction: discord.Interaction) -> bool:
-        admin_ids = []
-
-        query = database.Administrators.select().where(
-            database.Administrators.TierLevel >= 3
-        )
-        for admin in query:
-            admin_ids.append(admin.discordID)
-
-        return interaction.user.id in admin_ids
-
-    return app_commands.check(predicate)
-
-
-def slash_is_bot_admin_4():
-    def predicate(interaction: discord.Interaction) -> bool:
-        admin_ids = []
-
-        query = database.Administrators.select().where(
-            database.Administrators.TierLevel >= 4
-        )
-        for admin in query:
-            admin_ids.append(admin.discordID)
-
-        return interaction.user.id in admin_ids
-
+def op_team():
+    async def predicate(interaction):
+        role = interaction.client.settings.get("OPTeamRole", "OP Team")
+        roles = getattr(interaction.user, "roles", [])
+        if not any((r.id == role if isinstance(role, int) else r.name == role) for r in roles):
+            raise app_commands.MissingRole(role)
+        return True
     return app_commands.check(predicate)
