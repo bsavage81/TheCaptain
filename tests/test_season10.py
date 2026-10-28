@@ -132,6 +132,7 @@ def test_retired_mode_is_not_silently_repurposed(tmp_path,old_mode):
 
 def test_production_values_and_legacy_rows_preserved(tmp_path):
     backend=SqliteDatabase(tmp_path/"legacy.sqlite")
+    migrate(backend,apply=True)
     database.initialize_database({"owner_ids":[999]},backend)
     with backend.connection_context():
         database.BotData.update(prefix="!",bot_id=123,server_id_coastal=456,bot_type="Stable",persistent_views=True).where(database.BotData.id==1).execute()
@@ -221,3 +222,17 @@ def test_guide_match_validation_and_exact_option():
     assert content.accepts(" ARMADILLO ")
     assert not content.accepts("the armadillo knows")
     with pytest.raises(ValueError):load_guide_content({"guide_answer_match":"invalid"})
+
+
+def test_logo_default_matches_owner_cdn_selection(tmp_path):
+    path=tmp_path/"config.json";path.write_text(json.dumps(settings()))
+    cfg=load_settings(path,{})
+    assert cfg["logo_url"].startswith("https://cdn.discordapp.com/attachments/488792053002534920/1561597489516384357/IMG_8282.png?")
+    assert "drive.google.com" not in cfg["logo_url"]
+
+
+def test_runtime_never_creates_database_tables(tmp_path):
+    backend=SqliteDatabase(tmp_path/"fresh-no-ddl.sqlite")
+    with pytest.raises(ValueError,match="tables are missing"):
+        database.initialize_database({},backend)
+    with backend.connection_context():assert backend.get_tables()==[]

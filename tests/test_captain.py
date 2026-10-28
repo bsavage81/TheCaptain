@@ -68,6 +68,10 @@ def test_imports_no_config_or_writes(tmp_path, monkeypatch):
 def test_fresh_and_existing_schema(tmp_path):
     backend = SqliteDatabase(tmp_path / "test.sqlite")
     cfg = dict(owner_ids=[999])
+    from migrations.single_production import migrate
+    with pytest.raises(ValueError, match="tables are missing"):
+        initialize_database(cfg, backend)
+    migrate(backend, apply=True)
     row = initialize_database(cfg, backend)
     assert row.id == 1
     with backend.connection_context():

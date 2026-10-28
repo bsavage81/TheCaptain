@@ -60,7 +60,8 @@ def initialize_database(settings, backend=None):
     backend = backend if backend is not None else make_database(settings)
     db.initialize(backend)
     with backend.connection_context():
-        backend.create_tables(list(tables.values()), safe=True)
+        if set(tables) - set(backend.get_tables()):
+            raise ValueError("Captain database tables are missing. Review and run python -m migrations.single_production --apply explicitly before startup.")
         row = ensure_production_row()
         if not Administrators.select().exists():
             for owner in settings.get("owner_ids", [306070011028439041]):

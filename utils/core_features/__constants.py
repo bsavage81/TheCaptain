@@ -26,5 +26,5 @@ GUIDE_DEFAULTS = {
     "answer": "armadillo",
     "answer_match": "contains",
 }
-# Direct image form of the owner-supplied Drive file; public Discord fetching needs verification.
-LOGO_URL = "https://drive.google.com/uc?export=view&id=19swOQMBDP42z9b15DdBONkPDTgQcRRbo"
+# Owner-supplied Season 10 Discord CDN image; configurable for future image changes.
+LOGO_URL = "https://cdn.discordapp.com/attachments/488792053002534920/1561597489516384357/IMG_8282.png?ex=6ae374be&is=6ae2233e&hm=b3b70039d6d9875d55c2f53827ceaed69ba1b19b5b635a5de7257f2692fa34f0&"
