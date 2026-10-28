@@ -7,11 +7,12 @@ resources/synthetic records; do not exercise writes against production Sheets as
 
 ## Before an approved rollout
 
-1. Review the PR against main `6464132`; do not merge/deploy until the owner approves. Save current
+1. Review the PR against current main; do not merge/deploy until the owner approves. Save current
    operational code, dependencies, private `.env`/JSON and panel settings outside Git. Verify restore.
 2. Confirm repository `bsavage81/TheCaptain`, branch main and correct panel server `5ff9cb52`.
-   Deployment/restart stays manual; this branch adds no panel credentials or restart workflow.
-3. Install locked requirements into Python 3.12; run compileall, Ruff, pytest and pip check. Review
+   Main now has an owner-configured panel restart workflow. Review its deployment effect before
+   merging; this compatibility branch does not change panel credentials or restart the server.
+3. Install locked requirements into Python 3.15; run compileall, Ruff, pytest and pip check. Review
    hosted CI/security checks and `docs/validation.md`. No live secrets belong in CI.
 4. Keep the current production schema and existing row 1. Follow `database-audit.md` for a private
    backup, read-only inventory and explicit fresh-schema bootstrap if needed. Startup does no DDL.

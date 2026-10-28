@@ -7,10 +7,13 @@ There is one production bot. Git development branches do not select different bo
 
 ## Install and test locally
 
-Tested runtime: CPython 3.12.14. CI runs on Python 3.12 on Windows and Linux.
+Target runtime: **CPython 3.15.2 with Peewee 4.5.3**. CI covers the latest Python 3.15 and
+3.14 patch releases on Windows and Linux. See [runtime upgrade](docs/runtime-upgrade.md) for
+validation and the separate hosting-panel image change.
 
 ```shell
-python -m venv .venv
+python3.15 -m venv .venv
+# Windows alternative: py -3.15 -m venv .venv
 # Windows: .venv\Scripts\activate
 # Linux: source .venv/bin/activate
 python -m pip install -r requirements-dev.txt
@@ -130,7 +133,8 @@ Database and Sheets initialization are explicit; extensions register once in a f
 There is no automatic slash-command sync. Tier-3 manual `sync <guild|global|all>` and upstream
 owner-only jishaku are preserved. Application views/modals expire in five minutes and lose state
 on restart; the retained `persistent_views` database field no longer drives registration.
-Deployment remains manual on `main`; no panel restart workflow was added.
+Main pushes now request a panel restart through the owner-configured workflow. Runtime image
+and private environment settings are still managed in the hosting panel.
 
 ## Review and rollout
 
@@ -147,3 +151,9 @@ original production row. For an earlier two-column cleanup, preview
 `python -m migrations.restore_coastal_ids`, then explicitly use `--apply` to restore missing fields
 from captain_botdata_legacy. Existing differing values are never overwritten. These retained IDs do
 not silently replace the current JSON guild/channel mappings.
+
+When deploying, select the latest stable Python 3.15 panel image and clear the inherited PY_PACKAGES
+list so requirements.txt is the single dependency source. The repository's .python-version file
+cannot change the panel's Docker image. Existing certificate settings remain required: the
+owner-approved server uses database_ssl_mode=self_signed in the actual private .env/panel variables.
+Updating Python/Peewee does not resolve a missing certificate-mode setting.

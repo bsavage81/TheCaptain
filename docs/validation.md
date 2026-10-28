@@ -1,3 +1,7 @@
+> Runtime upgrade follow-up: Python 3.15.2 / Peewee 4.5.3 now passes 86 tests; compilation,
+> Ruff and dependency consistency pass. See runtime-upgrade.md for current target and evidence.
+> The Season 10 database execution history below remains historical evidence.
+
 # Season 10 offline validation — October 28, 2026
 
 Base: latest main `646413257f0a8670dad9e3611c9fab2d8e689108`. Dedicated branch:
