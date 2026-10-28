@@ -2,8 +2,6 @@
 botconfig.json
 __pycache__
 __pycache__/
-poetry.lock
-pyproject.toml
 label.yml
 .replit
 discord.log
@@ -18,3 +16,12 @@ DailyQuestions.txt
 *.png
 *.jpg
 *.gif
+.venv/
+.pytest_cache/
+*.egg-info/
+!requirements*.txt
+.test-tmp/
+
+!docs/baseline-requirements.txt
+.audit-tools/
+.verify-venv/

@@ -1,0 +1,16 @@
+{
+  "MRP": 0,
+  "PBtest": 0,
+  "Coastal": 0,
+  "CoastalMRP": 0,
+  "CoastalApplications": 0,
+  "CoastalOPTeam": 0,
+  "CoastalMapUpdates": 0,
+  "OPTeamRole": "OP Team",
+  "CoastalInviteChannel": 443614533815369728,
+  "CoastalGuideRole": 1159549536579096676,
+  "CoastalActiveRole": 565587168035340298,
+  "CoastalGuideResponses": 517060711202160640,
+  "owner_ids": [306070011028439041],
+  "credentials_path": "creds.json"
+}
