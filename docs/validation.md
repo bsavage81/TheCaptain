@@ -1,39 +1,78 @@
-# Offline validation report
+# Season 10 offline validation — October 28, 2026
 
-Completed October 27, 2026 (America/Chicago), on Windows with CPython 3.12.14.
+Base: latest main `646413257f0a8670dad9e3611c9fab2d8e689108`. Dedicated branch:
+`maintenance/season10-consolidation`. Tested on Windows, CPython 3.12.14.
 
-- Remote public main/dev heads match both supplied snapshots; no fetch/merge/push occurred.
-- Structural moves recorded independently before initialization and feature behavior repairs.
-- Conservative dependency baseline: 17 tests passed before upgrades.
-- Selected upgraded runtime: original 17 tests passed; expanded suite subsequently passed.
-- Final clean virtual environment installed only from `requirements-dev.txt`: **32 tests passed**.
-- `python -m compileall -q main.py utils tests`: passed.
-- `pip check` in the clean environment: no broken requirements.
-- `pip-audit 2.10.1 -r requirements-dev.txt --no-deps --disable-pip`: no known vulnerabilities;
-  machine-readable result retained in `dependency-audit.json`. Public advisory lookup required
-  network access; no bot service was contacted. Earlier pytest advisory was resolved before final audit.
-- `git diff --check`: passed.
-- PortalBot working tree remains unchanged.
+| Check | Exact result |
+| --- | --- |
+| Latest-main baseline pytest | 31 passed, 1 failed (old Season 9 title expectation after owner's main change) |
+| Final pytest | **84 passed**, 0 failed, 0 skipped; 1 upstream audioop deprecation warning |
+| Compilation: main.py utils migrations tests | Passed |
+| Ruff 0.17.3, select F, active source/migrations/tests | Passed; initial 11 unused-import/extraneous-f-string findings fixed |
+| pip check | No broken requirements |
+| pip-audit 2.10.1, locked runtime/dev set | No known vulnerabilities; JSON in dependency-audit.json |
+| git diff --check | Passed |
+| Archive comparison against main | No changed files under !archive/ |
+| Live new MariaDB | Cleanup, full temporary restore and runtime initialization/permissions passed; Discord/Sheets not run |
+| New database settings migration | Applied reversibly; original database untouched; no data deleted |
+| Deployment / restart / BETA shutdown / merge | Not performed |
 
-Tests cover safe imports without configuration/credentials; fresh/existing STABLE and BETA bootstrap;
-legacy field names; deterministic registration without command syncing; every End command and
-coordinate option; MRP channel scope; OP Team name/ID permissions; inherited tier-3 sync check;
-injected owner checks; all three application pages and ownership; temporary view lifetime;
-long modal titles; complete application/POI row builders; lazy Sheet initialization/titles/worksheets;
-concurrent max+1 inserts; application status row re-resolution; worker thread execution and cancellation
-serialization; guide corrected answers, conversation ownership and all timeout phases; POI timeout and
-overlap rejection; failed inserts without automatic retry; saved application/decision delivery failures.
+The suite retains application page progression/ownership, permissions, command registration,
+application and decision storage contracts, all five POI row builders and concurrent inserts,
+worker thread/cancellation serialization, guide retry/timeout ownership, and partial-failure checks.
+New cases cover Season 10 title defaults, key precedence/mixed selection, inaccessible files,
+all missing required marker worksheets, sanitized initialization and retry, dedicated-account
+credential boundary without reading a credential file, cwd-independent path resolution,
+optional test guild, retired-mode guard, production row-1 preservation, safe/repeatable migration,
+missing-production-row refusal, no runtime DDL, startup without BETA/test-guild configuration,
+no automatic sync, explicit guide cells, confirmed guide defaults and loose armadillo matching,
+incomplete-guide refusal, and the owner's replacement Discord logo default.
 
-External socket connections are blocked by an autouse test fixture. Loopback is allowed for Windows
-asyncio's internal socketpair. The desktop sandbox restricted that loopback, so executable test runs
-used an elevated local tool context while the fixture continued blocking external connections.
-No production token, credentials, database or spreadsheet was read or needed for these checks.
-All synthetic SQLite databases and virtual environments are ignored by Git.
+Tests block external socket connections (loopback only for Windows asyncio) and use synthetic
+Discord/Sheets objects plus temporary SQLite databases. The credential loader is mocked in tests;
+no private creds.json, environment token or production database is needed or printed. Tests ran
+outside the desktop sandbox only to allow Windows' local asyncio socketpair. The security audit
+queried public advisory data separately; audit warnings recommend hashes for the pinned lock files.
+Runtime dependency versions remain unchanged; Ruff is a development-only addition.
 
-One upstream warning remains: discord.py imports Python's deprecated `audioop` on Python 3.12.
-Python 3.13+ compatibility was not claimed or tested. Hosted Windows/Linux CI has been authored but
-not run on GitHub. MySQL server behavior, Discord deliveries/scope enforcement, actual service-account
-permissions, Sheet formatting/formulas, and current Season 9 content require staging validation.
-See `staging.md` for concrete validation and rollback steps; `baseline.md` states concurrency and
-partial-failure limitations. No deployment, merge, production command sync or live Discord messaging
-was performed.
+## Limits and manual verification
+
+The original database/external consumers were not inspected; the new database was verified separately.
+SQLite tests do not prove MySQL auth/TLS, server DDL privileges, triggers or backup restoration.
+No original-production rows or Sheets were read or changed. Row 1 in the new database was
+verified directly against the owner export. Required metadata/columns are tested at fake boundaries;
+real formulas, formatting and current share permissions remain operator checks.
+
+The owner confirmed Season 10 guide links, “Who knows?”, armadillo substring acceptance and the
+replacement Discord CDN logo. Link accessibility, logo retrieval/expiry, actual guild/channel IDs,
+role hierarchy, notifications and command publication still need authorized manual verification.
+The published CI workflow is maintained for Windows/Linux, but local Windows results alone do not
+claim a hosted/Linux pass. Main still requires separate owner approval before merge/deployment.
+No bot is terminated automatically and no global commands are synced at startup.
+
+Historical modernization results are preserved in validation-2026-10-27.md. See staging.md for
+single-deployment verification/rollback and database-audit.md for destructive items requiring approval.
+
+## Database cleanup completion follow-up
+
+The minimal runtime model and reversible cleanup/rollback were tested offline. New coverage verifies
+all typed legacy rows/columns and production Unicode prefix survive archival and rollback; all
+administrator records (including lower tiers) remain unchanged; repeated runs are safe; missing
+operational declarations and unknown columns/FKs/views/triggers/indexes block writes; interrupted
+copy/rename leaves recoverable state; and MySQL uses a single multi-table rename. A realistic fake
+MySQL boundary returns tuples and tests atomic rename failure; SQLite exercises the full round trip.
+Compilation and Ruff F checks pass. The unchanged dependency set retains the preceding clean audit.
+The owner subsequently supplied a new dedicated database connection and both table exports.
+Live cleanup and runtime checks succeeded after encrypted TLS verification and real temporary-table
+backup restoration. No credentials were persisted to repository files. The existing administrator
+record and all archived settings were verified unchanged. See database-cleanup-execution.md.
+No merge/deployment or running-bot shutdown was performed.
+
+Additional offline cases cover CHECK-constraint refusal, verified-identity TLS defaults, explicit
+self-signed opt-in, and rejection of unencrypted runtime connections. Final result: 84 tests passed,
+0 failed/skipped, one unchanged upstream audioop warning. Compilation, Ruff and pip check pass.
+
+Identifier-retention follow-up: 84 offline tests pass, including restoration/retry, conflict refusal
+and recovery after partial column creation. The live new database's three restored IDs matched
+original production row 1; prefix, administrator records and archived data remained unchanged.
+Runtime initialization, repeated restoration and updated cleanup preflight all passed live.

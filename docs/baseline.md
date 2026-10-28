@@ -1,3 +1,5 @@
+> Historical contract inventory from October 27, 2026. Season 10 configuration and single-production behavior supersede deployment instructions below; see README.md and database-audit.md.
+
 # Baseline and preserved contracts
 
 Remote heads rechecked before implementation on October 27, 2026 (America/Chicago):

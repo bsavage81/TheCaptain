@@ -1,7 +1,6 @@
 import asyncio
 import importlib
 import pkgutil
-from pathlib import Path
 from types import SimpleNamespace as NS
 from unittest.mock import AsyncMock, Mock
 import pytest
@@ -14,13 +13,13 @@ from utils.database.__database import initialize_database, BotData, Administrato
 from utils.integrations.__google_sheets import SheetsService
 from utils.coastal_applications.__ca_logic import CONTENT_CELLS, load_content
 from utils.coastal_applications.__ca_views import CoastalApplicationModal, CoastalApplicationStartView, CoastalApplicationContinueView
-from utils.coastal_guide.__cg_logic import converse
+from utils.coastal_guide.__cg_logic import converse, GuideContent
 from utils.helpers.__checks import op_team
 
 
 def settings():
     return dict(MRP=101, PBtest=102, Coastal=103, CoastalMRP=104, CoastalApplications=105,
-                CoastalOPTeam=106, CoastalMapUpdates=107, OPTeamRole="OP Team", bot_type="STABLE")
+                CoastalOPTeam=106, CoastalMapUpdates=107, OPTeamRole="OP Team")
 
 
 class Sheet:
@@ -66,20 +65,22 @@ def test_imports_no_config_or_writes(tmp_path, monkeypatch):
     assert list(tmp_path.iterdir()) == []
 
 
-@pytest.mark.parametrize("kind,row_id", [("STABLE",1),("BETA",2)])
-def test_fresh_and_existing_schema(tmp_path, kind, row_id):
+def test_fresh_and_existing_schema(tmp_path):
     backend = SqliteDatabase(tmp_path / "test.sqlite")
-    cfg = dict(bot_type=kind, owner_ids=[999])
+    cfg = dict(owner_ids=[999])
+    from migrations.single_production import migrate
+    with pytest.raises(ValueError, match="tables are missing"):
+        initialize_database(cfg, backend)
+    migrate(backend, apply=True)
     row = initialize_database(cfg, backend)
-    assert row.id == row_id
+    assert row.id == 1
     with backend.connection_context():
         assert set(backend.get_tables()) == {"botdata", "administrators"}
-        assert set(BotData._meta.fields) == {"id","persistent_views","prefix","bot_spam_channel_coastal","bot_spam_channel_aurafall","bot_type","bot_id","server_id_aurafall","server_id_coastal"}
+        assert set(BotData._meta.fields) == {"id","prefix","bot_id","bot_spam_channel_coastal","server_id_coastal"}
         row.prefix = "!"
-        row.persistent_views = True
         row.save()
     again = initialize_database(cfg, backend)
-    assert again.prefix == "!" and again.persistent_views
+    assert again.prefix == "!"
     with backend.connection_context():
         assert Administrators.get().discordID == 999
         assert BotData.select().count() == 1
@@ -89,9 +90,9 @@ def test_settings_no_writes_and_legacy_ids(tmp_path):
     import json
     path = tmp_path / "settings.json"
     path.write_text(json.dumps(settings()))
-    cfg = load_settings(path, {"bot_type":"BETA", "token":"synthetic"})
+    cfg = load_settings(path, {"token":"synthetic"})
     assert cfg["CoastalInviteChannel"] == 443614533815369728
-    assert cfg["bot_type"] == "BETA"
+    assert "bot_type" not in cfg
     assert cfg["token"] == "synthetic"
     with pytest.raises(ValueError):
         load_settings(tmp_path / "missing", {})
@@ -99,7 +100,7 @@ def test_settings_no_writes_and_legacy_ids(tmp_path):
 
 
 async def test_registration_exactly_once():
-    sheets = NS(initialize=AsyncMock(), application_content=load_content(Sheet()), poi_content=NS())
+    sheets = NS(initialize=AsyncMock(), application_content=load_content(Sheet()), poi_content=NS(), guide_content=GuideContent())
     initializer = Mock(return_value=NS(prefix=">"))
     bot = TheCaptain(settings(), sheets=sheets, database_initializer=initializer)
     await bot.setup_hook()
@@ -110,7 +111,7 @@ async def test_registration_exactly_once():
     assert names(101) == ["applycoastal"]
     expected = ["addpoi_end", "addpoi_end_returngateway", "addpoi_endcity_claim", "addpoi_nether", "addpoi_overworld", "approveapp", "denyapp", "guide"]
     assert names(102) == sorted(expected)
-    assert names(103) == sorted(expected)
+    assert names(103) == sorted(expected + ["applycoastal"])
     assert [c.name for c in bot.tree.get_commands()] == ["repeat"]
     assert bot.get_command("sync") is not None
     for cmd in bot.tree.get_commands(guild=discord.Object(103)):
@@ -198,7 +199,7 @@ async def test_sheet_mappings_serialization_and_row_shift():
     assert CONTENT_CELLS["questiontitle3"] == (1,9)
 
 
-@pytest.mark.parametrize("answers", [["wrong", " CAPPUCCINO ", "YES"], ["cappuccino", "no"], [], ["wrong"], ["cappuccino"]])
+@pytest.mark.parametrize("answers", [["wrong", " ARMADILLO ", "YES"], ["armadillo", "no"], [], ["wrong"], ["armadillo"]])
 async def test_guide_retries_all_timeouts_and_ownership(answers):
     messages = [NS(content=a) for a in answers]
     channel = NS(send=AsyncMock())
@@ -211,13 +212,13 @@ async def test_guide_retries_all_timeouts_and_ownership(answers):
         if not messages:
             raise asyncio.TimeoutError
         return messages.pop(0)
-    await converse(NS(wait_for=wait_for), channel, author, "guide-role", "active-role", response)
+    await converse(NS(wait_for=wait_for, settings=settings(), guide_content=GuideContent(web_url="https://example.invalid/guide",question="Synthetic question",answer="armadillo")), channel, author, "guide-role", "active-role", response)
     if answers and answers[-1] == "YES":
         assert author.add_roles.await_count == 2
         response.send.assert_awaited_once()
     else:
         author.add_roles.assert_not_awaited()
-    if not answers or answers[-1] in ("wrong", "cappuccino"):
+    if not answers or answers[-1] in ("wrong", "armadillo"):
         assert "tired of waiting" in channel.send.call_args.args[0]
 
 
@@ -261,14 +262,14 @@ async def test_lazy_service_initialization_and_titles():
     marker = Mock()
     marker.worksheet.side_effect = lambda name: Sheet()
     client = Mock()
-    client.open.side_effect = lambda name: NS(sheet1=app) if name == "CCS9 Realm Application" else marker
+    client.open.side_effect = lambda name: NS(sheet1=app) if name == "CCS10 Realm Application" else marker
     factory = Mock(return_value=client)
     s = SheetsService({}, client_factory=factory)
     factory.assert_not_called()
     await s.initialize()
     await s.initialize()
     factory.assert_called_once()
-    assert [call.args[0] for call in client.open.call_args_list] == ["CCS9 Realm Application", "Coastal Markers"]
+    assert [call.args[0] for call in client.open.call_args_list] == ["CCS10 Realm Application", "Coastal Markers S10"]
     assert [call.args[0] for call in marker.worksheet.call_args_list] == ["Overworld", "Nether", "End", "Questions"]
     client.set_timeout.assert_called_once_with(30)
 

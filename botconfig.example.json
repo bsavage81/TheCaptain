@@ -1,6 +1,5 @@
 {
   "MRP": 0,
-  "PBtest": 0,
   "Coastal": 0,
   "CoastalMRP": 0,
   "CoastalApplications": 0,
@@ -11,6 +10,19 @@
   "CoastalGuideRole": 1159549536579096676,
   "CoastalActiveRole": 565587168035340298,
   "CoastalGuideResponses": 517060711202160640,
-  "owner_ids": [306070011028439041],
-  "credentials_path": "creds.json"
+  "owner_ids": [
+    306070011028439041
+  ],
+  "credentials_path": "creds.json",
+  "application_sheet": "CCS10 Realm Application",
+  "markers_sheet": "Coastal Markers S10",
+  "application_sheet_id": null,
+  "markers_sheet_id": null,
+  "guide_web_url": "https://docs.google.com/document/d/1FGK84rUyrC6LX0UrnW7IxzjupYPEbOCo7ccpQlSmvu8/edit?usp=drive_link",
+  "guide_pdf_url": "https://drive.google.com/file/d/1zMmjQTzZeEHUHgjxNZsNnGe9ubw-3QCW/view?usp=drive_link",
+  "guide_question": "Who knows?",
+  "guide_answer": "armadillo",
+  "guide_answer_match": "contains",
+  "logo_url": "https://cdn.discordapp.com/attachments/488792053002534920/1561597489516384357/IMG_8282.png?ex=6ae374be&is=6ae2233e&hm=b3b70039d6d9875d55c2f53827ceaed69ba1b19b5b635a5de7257f2692fa34f0&",
+  "guide_cells": {}
 }

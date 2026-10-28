@@ -1,0 +1,28 @@
+name: Sync The Captain with Panel
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: captain-production-deployment
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    if: github.repository == 'bsavage81/TheCaptain' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # Sends a restart request; code updates depend on the server startup command.
+      # v1.0 does not validate the panel response or confirm deployment success.
+      - name: Request The Captain restart
+        uses: hwalker928/ptero-gitsync@v1.0
+        with:
+          panel-url: ${{ secrets.PANEL_URL }}
+          api-key: ${{ secrets.API_KEY }}
+          server-id: ${{ secrets.SERVER_ID_MAIN }}

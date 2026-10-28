@@ -165,7 +165,7 @@ async def finish_application(self, interaction):
             color=0x336F75,
         )
         embed1.set_thumbnail(
-            url="https://cdn.discordapp.com/attachments/488792053002534920/1157338182392741999/coastal_logo_final_s9.png"
+            url=self.bot.settings.get("logo_url")
         )
         embed1.add_field(name=self.bot.application_content.Qgamertag, value=str(answerlist[0]), inline=True)
         embed1.add_field(name=self.bot.application_content.Qcountry, value=str(answerlist[1]), inline=True)
@@ -259,7 +259,7 @@ async def denyapp(self, interaction, appnumber):
         inline=False,
     )
     embed.set_thumbnail(
-        url="https://cdn.discordapp.com/attachments/488792053002534920/1157338182392741999/coastal_logo_final_s9.png"
+        url=self.bot.settings.get("logo_url")
     )
     try:
         if user is not None:
@@ -280,7 +280,7 @@ async def denyapp(self, interaction, appnumber):
         )
         response_embed.set_footer(text="The command has finished all of its tasks")
         response_embed.set_thumbnail(
-            url="https://cdn.discordapp.com/attachments/488792053002534920/1157338182392741999/coastal_logo_final_s9.png"
+            url=self.bot.settings.get("logo_url")
         )
         await interaction.followup.send(embed=response_embed)
 
@@ -331,7 +331,7 @@ async def approveapp(self, interaction, appnumber):
         inline=False,
     )
     embed.set_thumbnail(
-        url="https://cdn.discordapp.com/attachments/488792053002534920/1157338182392741999/coastal_logo_final_s9.png"
+        url=self.bot.settings.get("logo_url")
     )
     try:
         if user is not None:
@@ -353,6 +353,6 @@ async def approveapp(self, interaction, appnumber):
         )
         response_embed.set_footer(text="The command has finished all of its tasks")
         response_embed.set_thumbnail(
-            url="https://cdn.discordapp.com/attachments/488792053002534920/1157338182392741999/coastal_logo_final_s9.png"
+            url=self.bot.settings.get("logo_url")
         )
         await interaction.followup.send(embed=response_embed)

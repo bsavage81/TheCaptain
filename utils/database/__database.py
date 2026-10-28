@@ -1,5 +1,7 @@
 """Captain schema. Importing this module never connects or creates tables."""
-from peewee import AutoField, Model, IntegerField, TextField, BigIntegerField, BooleanField, DatabaseProxy, MySQLDatabase
+import ssl
+from utils.core_features.__constants import ROOT
+from peewee import AutoField, Model, IntegerField, TextField, BigIntegerField, DatabaseProxy, MySQLDatabase
 
 db = DatabaseProxy()
 
@@ -11,55 +13,13 @@ class BaseModel(Model):
 
 
 class BotData(BaseModel):
-    """
-    BotData:
-    Information used across the bot.
-
-    `id`: AutoField()
-    Database Entry ID (ALWAYS QUERY 1)
-
-    `last_question_posted`: DateTimeField()
-    Last time a question was posted
-
-    `persistent_views`: BooleanField()
-    Whether or not persistent views are enabled
-
-    `prefix`: TextField()
-    Bot prefix
-
-    `blacklist_response_channel`: BigIntegerField()
-    Channel ID for blacklist responses
-
-    `question_suggest_channel`: BigIntegerField()
-    Channel ID for question suggestions
-
-    `bot_spam_channel`: BigIntegerField()
-    Channel ID for bot spam
-
-    `realm_channel_response`: BigIntegerField()
-    Channel ID for realm channel responses
-
-    `bot_type`: TextField()
-    Bot type
-
-    `other_bot_id`: BigIntegerField()
-    Other bot ID
-
-    `bot_id`: BigIntegerField()
-    Bot ID
-
-    `server_id`: BigIntegerField()
-    Server ID
-    """
+    """Production singleton. Retired settings live only in the migration archive."""
     id = AutoField()
-    persistent_views = BooleanField(default=False)
     prefix = TextField(default=">")
-    bot_spam_channel_coastal = BigIntegerField(default=0)
-    bot_spam_channel_aurafall = BigIntegerField(default=0)
-    bot_type = TextField(default="Stable")
     bot_id = BigIntegerField(default=0)
-    server_id_aurafall = BigIntegerField(default=0)
+    bot_spam_channel_coastal = BigIntegerField(default=0)
     server_id_coastal = BigIntegerField(default=0)
+
 
 class Administrators(BaseModel):
     """
@@ -90,15 +50,14 @@ tables = {"administrators": Administrators, "botdata": BotData}
 
 
 def initialize_database(settings, backend=None):
-    backend = backend if backend is not None else MySQLDatabase(
-        settings["database_schema"], host=settings["database_ip"],
-        port=int(settings.get("database_port", 3306)),
-        user=settings["database_username"], password=settings["database_password"])
+    if settings.get("bot_type", "STABLE") != "STABLE":
+        raise ValueError("Retired deployment configuration cannot initialize production")
+    backend = backend if backend is not None else make_database(settings)
     db.initialize(backend)
     with backend.connection_context():
-        backend.create_tables(list(tables.values()), safe=True)
-        row_id = {"STABLE": 1, "BETA": 2}[settings.get("bot_type", "STABLE")]
-        row, _ = BotData.get_or_create(id=row_id, defaults={"bot_type": settings.get("bot_type", "STABLE")})
+        if set(tables) - set(backend.get_tables()):
+            raise ValueError("Captain database tables are missing. Review and run python -m migrations.single_production --apply explicitly before startup.")
+        row = ensure_production_row()
         if not Administrators.select().exists():
             for owner in settings.get("owner_ids", [306070011028439041]):
                 Administrators.get_or_create(discordID=owner, defaults={"TierLevel": 4})
@@ -109,3 +68,48 @@ def is_administrator(user_id, tier=3):
     with db.connection_context():
         return Administrators.select().where(
             (Administrators.discordID == user_id) & (Administrators.TierLevel >= tier)).exists()
+
+
+class EncryptedMySQLDatabase(MySQLDatabase):
+    """Refuse operational queries unless the driver negotiated encrypted transport."""
+    def _connect(self):
+        connection = super()._connect()
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute("SHOW SESSION STATUS LIKE 'Ssl_cipher'")
+                if not cursor.fetchone()[1]:
+                    raise ConnectionError("Encrypted database transport is required")
+            return connection
+        except Exception:
+            connection.close()
+            raise
+
+
+def make_database(settings):
+    mode = settings.get("database_ssl_mode", "verify_identity")
+    if mode not in ("verify_identity", "self_signed"):
+        raise ValueError("database_ssl_mode must be verify_identity or self_signed")
+    ca = settings.get("database_ssl_ca")
+    context = ssl.create_default_context(cafile=str(ROOT / ca) if ca else None)
+    if mode == "self_signed":
+        # Explicit owner opt-in; transport remains encrypted, peer identity is not verified.
+        context.check_hostname = False
+        context.verify_mode = ssl.CERT_NONE
+    return EncryptedMySQLDatabase(
+        settings["database_schema"], host=settings["database_ip"],
+        port=int(settings.get("database_port", 3306)),
+        user=settings["database_username"], password=settings["database_password"],
+        ssl=context, charset="utf8mb4", connect_timeout=10, read_timeout=30, write_timeout=30)
+
+
+def ensure_production_row():
+    """Preserve row 1 exactly; never infer production from a retired deployment."""
+    row = BotData.get_or_none(BotData.id == 1)
+    if row is not None:
+        return row
+    if BotData.select().exists():
+        raise ValueError("Production BotData row 1 is missing in a nonempty table. Restore the verified production row before startup; no legacy row was copied.")
+    if {column.name for column in db.get_columns("botdata")} != set(BotData._meta.fields):
+        raise ValueError("Empty legacy BotData schema requires an explicit reviewed migration before startup")
+    row, _ = BotData.get_or_create(id=1)
+    return row

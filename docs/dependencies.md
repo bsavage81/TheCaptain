@@ -53,7 +53,14 @@ explicitly retained and its native upstream owner authorization is unchanged.
 - [setup-python action documentation](https://github.com/actions/setup-python)
 
 Only `.github/workflows/` runs in GitHub Actions. CodeQL was updated to v4; obsolete active
-OSSAR/.NET tooling was replaced with pip-audit. Root `workflows/` files remain historical,
-inactive examples. CI installs pins, checks syntax/imports and runs the offline suite on Windows
+OSSAR/.NET tooling was replaced with pip-audit. The inactive root `workflows/` duplicates were removed in the Season 10 cleanup. CI installs pins, checks syntax/imports and runs the offline suite on Windows
 and Linux without bot secrets. Security audit alone queries public advisory data. No panel or
 production deployment workflow was copied. Hosted CI execution remains unverified until pushed.
+
+## Season 10 maintenance
+
+Runtime dependency pins and oauth2client credential compatibility are unchanged. Dedicated-account
+validation does not require a new authentication library or credential format. Ruff 0.17.3 is a
+pinned development-only addition for unused imports, undefined names and related F checks. The
+current security audit is recorded in validation.md; baseline-requirements.txt remains historical.
+No new deployment dependencies or panel integration were introduced.

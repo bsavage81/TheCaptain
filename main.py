@@ -7,7 +7,7 @@ from discord import app_commands
 from discord.ext import commands
 from utils.core_features.__constants import EXTENSIONS, ROOT
 from utils.core_features.__common import load_settings
-from utils.core_features.__special_methods import on_app_command_error_, on_command_error_
+from utils.core_features.__special_methods import on_app_command_error_, on_command_error_, on_ready_
 from utils.database.__database import initialize_database, is_administrator
 from utils.integrations.__google_sheets import SheetsService
 
@@ -40,12 +40,14 @@ class TheCaptain(commands.Bot):
         await self.sheets.initialize()
         self.application_content = self.sheets.application_content
         self.poi_content = self.sheets.poi_content
+        self.guide_content = self.sheets.guide_content
         for extension in EXTENSIONS:
             if extension not in self.extensions:
                 await self.load_extension(extension)
 
     async def on_ready(self):
         logging.getLogger(__name__).info("TheCaptain ready")
+        await on_ready_(self)
 
     async def is_owner(self, user):
         return await asyncio.to_thread(self.admin_check, user.id, 3) or await super().is_owner(user)
