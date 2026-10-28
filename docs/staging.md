@@ -24,7 +24,10 @@ resources/synthetic records; do not exercise writes against production Sheets as
 6. Supply the existing private Captain creds.json through the deployment's secret-file mechanism.
    Confirm it belongs to the documented dedicated account and that both Season 10 files are shared.
    Prefer configured file IDs over ambiguous duplicate titles. Do not modify their data for validation.
-7. Review the confirmed Season 10 guide defaults and owner-supplied Discord logo. Confirm links are
+7. For the new owner-approved MariaDB server, configure database_ssl_mode=self_signed in private
+   deployment settings; the driver still requires encrypted transport. The live cleanup has already
+   completed there; do not re-import old settings over the clean table. See database-cleanup-execution.md.
+   Review the confirmed Season 10 guide defaults and owner-supplied Discord logo. Confirm links are
    accessible to the intended members and Discord can retrieve the image. Refresh configurable
    signed CDN links if the supplied URL is no longer fetchable; do not invent replacement assets.
 8. Ensure only one process can write these Sheets. Permanently retiring/stopping BETA is an explicit

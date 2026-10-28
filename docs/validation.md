@@ -6,15 +6,15 @@ Base: latest main `646413257f0a8670dad9e3611c9fab2d8e689108`. Dedicated branch:
 | Check | Exact result |
 | --- | --- |
 | Latest-main baseline pytest | 31 passed, 1 failed (old Season 9 title expectation after owner's main change) |
-| Final pytest | **77 passed**, 0 failed, 0 skipped; 1 upstream audioop deprecation warning |
+| Final pytest | **81 passed**, 0 failed, 0 skipped; 1 upstream audioop deprecation warning |
 | Compilation: main.py utils migrations tests | Passed |
 | Ruff 0.17.3, select F, active source/migrations/tests | Passed; initial 11 unused-import/extraneous-f-string findings fixed |
 | pip check | No broken requirements |
 | pip-audit 2.10.1, locked runtime/dev set | No known vulnerabilities; JSON in dependency-audit.json |
 | git diff --check | Passed |
 | Archive comparison against main | No changed files under !archive/ |
-| Live Discord/MySQL/Google Sheets | Not run; no credentials used |
-| Production migration / destructive SQL | Not run; none executed |
+| Live new MariaDB | Cleanup, full temporary restore and runtime initialization/permissions passed; Discord/Sheets not run |
+| New database settings migration | Applied reversibly; original database untouched; no data deleted |
 | Deployment / restart / BETA shutdown / merge | Not performed |
 
 The suite retains application page progression/ownership, permissions, command registration,
@@ -37,10 +37,10 @@ Runtime dependency versions remain unchanged; Ruff is a development-only additio
 
 ## Limits and manual verification
 
-No live database contents/external consumers were inspected; database-audit.md is source-based.
+The original database/external consumers were not inspected; the new database was verified separately.
 SQLite tests do not prove MySQL auth/TLS, server DDL privileges, triggers or backup restoration.
-No production rows or Sheets were read or changed. The production row-1 convention is confirmed
-from source, not a live data assertion. Required metadata/columns are tested at fake boundaries;
+No original-production rows or Sheets were read or changed. Row 1 in the new database was
+verified directly against the owner export. Required metadata/columns are tested at fake boundaries;
 real formulas, formatting and current share permissions remain operator checks.
 
 The owner confirmed Season 10 guide links, “Who knows?”, armadillo substring acceptance and the
@@ -62,6 +62,12 @@ operational declarations and unknown columns/FKs/views/triggers/indexes block wr
 copy/rename leaves recoverable state; and MySQL uses a single multi-table rename. A realistic fake
 MySQL boundary returns tuples and tests atomic rename failure; SQLite exercises the full round trip.
 Compilation and Ruff F checks pass. The unchanged dependency set retains the preceding clean audit.
-No credentials, .env or botconfig.json are present in this workspace; actual database cleanup has
-not been executed. Connection location, exclusive ownership, backups and a coordinated code/schema
-maintenance window remain required. No merge/deployment or running-bot shutdown was performed.
+The owner subsequently supplied a new dedicated database connection and both table exports.
+Live cleanup and runtime checks succeeded after encrypted TLS verification and real temporary-table
+backup restoration. No credentials were persisted to repository files. The existing administrator
+record and all archived settings were verified unchanged. See database-cleanup-execution.md.
+No merge/deployment or running-bot shutdown was performed.
+
+Additional offline cases cover CHECK-constraint refusal, verified-identity TLS defaults, explicit
+self-signed opt-in, and rejection of unencrypted runtime connections. Final result: 81 tests passed,
+0 failed/skipped, one unchanged upstream audioop warning. Compilation, Ruff and pip check pass.

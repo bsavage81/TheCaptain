@@ -1,10 +1,11 @@
 # Captain database audit and consolidation plan
 
-Source-based audit, October 28, 2026. No live database, credentials or applicant records were read.
-Actual table existence, row contents/counts, indexes, triggers, scheduled jobs, grants, external
-consumers and cross-application dependencies remain unverified. The owner subsequently authorized completion of database cleanup. The implemented cleanup
+Initial source-based audit, October 28, 2026; subsequently verified and applied to the owner's new dedicated MariaDB database. See database-cleanup-execution.md for exact live evidence.
+The original production database and historical application records were not accessed.
+The original database's table contents, triggers, scheduled jobs, grants and external consumers
+remain unverified. The new database table contents and cleanup dependencies were verified separately. The owner subsequently authorized completion of database cleanup. The implemented cleanup
 archives the known BotData legacy objects rather than deleting records; unknown tables and
-permission changes still need a live inventory. No live execution has occurred.
+permission changes still need a live inventory. The authorized new-database cleanup is complete; original-database cleanup was not performed.
 
 ## Object inventory
 
@@ -37,7 +38,7 @@ schema has none. The read-only migration inventory reports table names, column n
 metadata and row-1/row-2 presence, not values or administrator identities. Archived model names are
 not reliable SQL table identifiers; no DROP templates are generated for inferred names.
 
-## Implemented cleanup target — live execution pending
+## Implemented cleanup target — completed in the new database
 
 The runtime model now retains only:
 
@@ -94,9 +95,10 @@ values and the current production schema. Actual deployment row 1 contents canno
    permissions and cross-service consumers are never guessed or deleted.
 
 The tools are repeat-safe for serial, inspected runs. Runtime startup performs no schema DDL.
-No live credentials/connection are configured in this workspace, so these operations have only
-been executed on synthetic databases. The live database location, independent backup and exclusive
-ownership must be established before actual cleanup.
+The owner supplied the new database connection transiently, and live cleanup completed after
+export comparison, encrypted-transport verification and a real temporary-table restore check.
+Connection credentials were not persisted in repository files. These prerequisites still apply to
+any later operation or another database; the original database was not inspected or modified.
 
 ## Rollback/restoration procedure
 

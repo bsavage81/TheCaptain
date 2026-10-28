@@ -30,6 +30,9 @@ Copy `botconfig.example.json` to `botconfig.json` and `.env.example` to `.env`. 
 Replace the zero guild/channel IDs with the **existing production** values. Keep the existing
 MySQL schema name, token, owners and roles; do not copy example IDs over working configuration.
 The lower-case `token` and `database_*` environment keys still override their JSON counterparts.
+For the new owner-approved MariaDB connection use `database_ssl_mode=self_signed`: encryption is
+required, while the provider's self-signed certificate is accepted explicitly. The code defaults to
+`verify_identity` if this setting is absent; `database_ssl_ca` optionally supplies a provider CA path.
 Startup reads `botdata` row **1** and preserves it unchanged. Remove `bot_type` from the production
 environment/JSON. A legacy `STABLE` value is tolerated and discarded; any other value is rejected,
 so a retired BETA instance cannot silently become another production writer. Nothing in this
@@ -134,5 +137,6 @@ See [Season 10 discovery](docs/season10-discovery.md), [database audit](docs/dat
 [file mapping](docs/file-mapping.md), [validation](docs/validation.md), and
 [deployment verification and rollback](docs/staging.md). Historical contracts and prior reports
 are explicitly labelled as history. Archive source remains unchanged and never loads.
-No live Discord, MySQL or Sheets verification, deployment, bot retirement or destructive database
-operation was performed by this maintenance change.
+The new MariaDB settings cleanup and runtime initialization/permissions were verified live; see
+[execution report](docs/database-cleanup-execution.md). The original database was unchanged.
+No Discord/Sheets access, deployment, PR merge, bot retirement or running-bot restart was performed.
