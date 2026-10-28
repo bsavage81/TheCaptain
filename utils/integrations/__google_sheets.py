@@ -13,6 +13,58 @@ from utils.core_features.__constants import CAPTAIN_SERVICE_ACCOUNT, SHEET_DEFAU
 class SheetsInitializationError(RuntimeError):
     """A sanitized startup failure; never include Google payloads or credential contents."""
 
+def _safe_failure_details(error):
+    """Classify known failures without rendering exception messages or response bodies."""
+    failures = []
+    current = error
+    while current is not None and len(failures) < 4 and all(current is not e for e in failures):
+        failures.append(current)
+        current = current.__cause__
+    names = {type(e).__name__ for e in failures}
+    status = None
+    reasons = set()
+    known_reasons = {"SERVICE_DISABLED", "accessNotConfigured", "PERMISSION_DENIED", "NOT_FOUND", "RATE_LIMIT_EXCEEDED", "rateLimitExceeded"}
+    for failure in failures:
+        response = getattr(failure, "response", None)
+        code = getattr(response, "status_code", None)
+        if type(code) is int and 100 <= code <= 599:
+            status = code
+        payload = getattr(failure, "error", None)
+        if isinstance(payload, dict):
+            values = [payload.get("status")]
+            for key in ("errors", "details"):
+                for detail in payload.get(key, []) if isinstance(payload.get(key), list) else []:
+                    if isinstance(detail, dict):
+                        values.append(detail.get("reason"))
+            reasons.update(value for value in values if isinstance(value, str) and value in known_reasons)
+    summary = type(error).__name__
+    if status:
+        summary += f"; HTTP {status}"
+    if reasons:
+        summary += "; " + ", ".join(sorted(reasons))
+    if reasons & {"SERVICE_DISABLED", "accessNotConfigured"}:
+        hint = "Enable the required Google Sheets API (and Drive API for title lookup) in Captain's service-account project."
+    elif "SpreadsheetNotFound" in names or status == 404:
+        hint = "No accessible spreadsheet matched the configured title/key. Verify the spreadsheet ID/title and sharing with Captain's service account."
+    elif "WorksheetNotFound" in names:
+        hint = "The required worksheet is missing; preserve the expected worksheet names."
+    elif status == 401:
+        hint = "Google rejected authentication. Verify the active private service-account key and server clock."
+    elif status == 400:
+        hint = "Verify that the configured ID belongs to a native Google spreadsheet rather than a document or uploaded Excel file."
+    elif status == 403 or "PermissionError" in names:
+        hint = "Google denied access. Verify service-account sharing and that the Google Sheets API is enabled."
+    elif names & {"RefreshError", "AccessTokenRefreshError", "HttpAccessTokenRefreshError"}:
+        hint = "Google authentication failed. Verify the server clock and that the configured private service-account key is still active."
+    elif names & {"Timeout", "ReadTimeout", "ConnectTimeout", "ConnectionError", "SSLError"}:
+        hint = "Check outbound HTTPS connectivity, trusted Google TLS certificates and the server clock."
+    elif status == 429 or (status is not None and status >= 500):
+        hint = "Google returned a temporary/rate-limit failure; retry startup later."
+    else:
+        hint = "Check the configured spreadsheet, service-account access and required worksheets/ranges."
+    return f"{summary}. {hint}"
+
+
 SCOPES = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/spreadsheets",
           "https://www.googleapis.com/auth/drive.file", "https://www.googleapis.com/auth/drive"]
 
@@ -44,8 +96,10 @@ class SheetsService:
                     raise SheetsInitializationError("Configure Captain's dedicated service account in the private credentials file.")
                 client = gspread.authorize(creds)
             client.set_timeout(30)
-            stage = "applications spreadsheet (first worksheet)"
-            applications = self._open(client, self.settings, "application").sheet1
+            stage = "applications spreadsheet lookup"
+            application_book = self._open(client, self.settings, "application")
+            stage = "applications first worksheet metadata"
+            applications = application_book.sheet1
             stage = "markers spreadsheet"
             markers_book = self._open(client, self.settings, "markers")
             markers = {}
@@ -75,8 +129,8 @@ class SheetsService:
             self.ready = True
         except SheetsInitializationError:
             raise
-        except Exception:
-            raise SheetsInitializationError(f"Unable to initialize {stage}. Check Captain service-account access, selected spreadsheet and required worksheet/ranges.") from None
+        except Exception as error:
+            raise SheetsInitializationError(f"Unable to initialize {stage}: {_safe_failure_details(error)}") from None
 
     async def _run(self, operation):
         async with self.lock:
