@@ -80,14 +80,19 @@ def inspect(panel, configured_server):
     try:
         variables = panel.get(f"/servers/{EXPECTED_SERVER}/startup")
         safe = {}
+        report["startup_variable_names"] = [entry["attributes"]["env_variable"] for entry in variables.get("data", [])]
         for entry in variables.get("data", []):
             var = entry["attributes"]
             key, value = var["env_variable"], str(var.get("server_value", ""))
             if key in ("AUTO_UPDATE", "USER_UPLOAD", "BRANCH", "GIT_BRANCH", "PY_FILE", "BOT_PY_FILE", "REQUIREMENTS_FILE"):
                 safe[key] = value if re.fullmatch(r"[\w./ -]{0,120}", value) else "[nonstandard value]"
             if key in ("GIT_ADDRESS", "GIT_REPO", "GIT_URL"):
-                safe[key + "_is_captain_repo"] = "github.com/bsavage81/TheCaptain" in value
+                safe[key + "_is_captain_repo"] = "github.com/bsavage81/thecaptain" in value.casefold()
+                safe[key + "_empty"] = not value.strip()
+            if not any(secret in key.upper() for secret in ("TOKEN", "PASSWORD", "PASS", "KEY", "SECRET", "AUTH")) and value.casefold() in ("0", "1", "true", "false", "yes", "no"):
+                safe[key] = value
         report["startup_variables"] = safe
+        report["startup_has_disabled_update_gate"] = bool(re.search(r'(?:"?0"?\s*==\s*"?1"?|"?false"?\s*==\s*"?true"?)', invocation))
     except PanelError as error:
         report["startup_variables_status"] = error.status
     guide = file_text(panel, GUIDE)
