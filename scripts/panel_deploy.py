@@ -5,6 +5,7 @@ Never log API keys, panel URLs, startup commands, response bodies or private fil
 import argparse
 import asyncio
 import hashlib
+from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
@@ -18,6 +19,7 @@ from urllib.request import HTTPRedirectHandler, Request, build_opener
 ROOT = Path(__file__).resolve().parents[1]
 EXPECTED_SERVER = "5ff9cb52"
 GUIDE = "utils/coastal_guide/__cg_logic.py"
+LEGACY_REVISION = "1f9f85c95821830d2a95f4ccf2bafee2a443eed2"
 
 
 class PanelError(RuntimeError):
@@ -51,10 +53,13 @@ class Panel:
             raise PanelError(error.code) from None
 
     def restart(self):
-        request = Request(self.url + f"/servers/{EXPECTED_SERVER}/power", method="POST",
-            data=json.dumps({"signal": "restart"}).encode(), headers={
+        self.post(f"/servers/{EXPECTED_SERVER}/power", json.dumps({"signal": "restart"}))
+
+    def post(self, path, body, *, content_type="application/json"):
+        request = Request(self.url + path, method="POST",
+            data=body.encode(), headers={
                 "Authorization": "Bearer " + self.key, "Accept": "application/json",
-                "Content-Type": "application/json"})
+                "Content-Type": content_type})
         try:
             with self.opener.open(request, timeout=30) as response:
                 if response.status != 204:
@@ -74,6 +79,45 @@ def file_text(panel, name):
 
 def normalized_hash(text):
     return hashlib.sha256(text.replace("\r\n", "\n").encode()).hexdigest()
+
+
+def legacy_example():
+    url = f"https://raw.githubusercontent.com/bsavage81/TheCaptain/{LEGACY_REVISION}/botconfig.example.json"
+    with build_opener(NoRedirect()).open(Request(url), timeout=30) as response:
+        content = response.read(100_000).decode("utf-8")
+    if not isinstance(json.loads(content), dict):
+        raise ValueError("Invalid committed example")
+    return content
+
+
+def repair_tracked_example(panel):
+    """Preserve the exact user-edited example before restoring just that tracked file."""
+    revision = file_text(panel, ".git/refs/heads/main")
+    if not revision or revision.strip() != LEGACY_REVISION:
+        raise ValueError("Legacy checkout changed; review before repairing the example")
+    original = file_text(panel, "botconfig.example.json")
+    if original is None:
+        raise ValueError("Server example unavailable; no file was changed")
+    committed = legacy_example()
+    if original == committed:
+        return {"tracked_example_already_clean": True}
+    folders = panel.get(f"/servers/{EXPECTED_SERVER}/files/list?directory=%2F")
+    if not any(x["attributes"]["name"] == ".database-backups" and not x["attributes"]["is_file"]
+               for x in folders.get("data", [])):
+        panel.post(f"/servers/{EXPECTED_SERVER}/files/create-folder", json.dumps({"root": "/", "name": ".database-backups"}))
+    name = ".database-backups/botconfig.example.before-git-update-" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + ".json"
+    def write_file(path, content):
+        panel.post(f"/servers/{EXPECTED_SERVER}/files/write?file=" + quote("/" + path, safe=""),
+                   content, content_type="text/plain; charset=utf-8")
+    write_file(name, original)
+    if file_text(panel, name) != original:
+        raise ValueError("Server example backup did not verify; original was not changed")
+    if file_text(panel, "botconfig.example.json") != original or (file_text(panel, ".git/refs/heads/main") or "").strip() != LEGACY_REVISION:
+        raise ValueError("Server files changed concurrently; original was not changed")
+    write_file("botconfig.example.json", committed)
+    if file_text(panel, "botconfig.example.json") != committed:
+        raise ValueError("Tracked example restoration did not verify; preserved backup remains available")
+    return {"server_example_backup_verified": True, "backup_path": "/" + name, "tracked_example_restored": True}
 
 
 async def console_signals(panel):
@@ -180,6 +224,7 @@ def main():
     mode.add_argument("--inspect-only", action="store_true")
     mode.add_argument("--restart-and-verify", action="store_true")
     parser.add_argument("--expected-revision")
+    parser.add_argument("--repair-tracked-example", action="store_true")
     args = parser.parse_args()
     panel = Panel(os.environ["PANEL_URL"], os.environ["PANEL_API_KEY"])
     configured = os.environ.get("PANEL_SERVER_ID", "").strip()
@@ -189,6 +234,8 @@ def main():
         # Verify ownership/identifier before performing the pre-authorized restart.
         if panel.get(f"/servers/{EXPECTED_SERVER}")["attributes"].get("identifier") != EXPECTED_SERVER:
             raise ValueError("Server identifier mismatch")
+        if args.repair_tracked_example:
+            print(json.dumps(repair_tracked_example(panel)), flush=True)
         panel.restart()
         print(json.dumps({"restart_accepted": True}), flush=True)
         deadline = time.monotonic() + 180

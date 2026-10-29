@@ -18,11 +18,17 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      # Sends a restart request; code updates depend on the server startup command.
-      # v1.0 does not validate the panel response or confirm deployment success.
-      - name: Request The Captain restart
-        uses: hwalker928/ptero-gitsync@v1.0
+      - uses: actions/checkout@v7
         with:
-          panel-url: ${{ secrets.PANEL_URL }}
-          api-key: ${{ secrets.API_KEY }}
-          server-id: ${{ secrets.SERVER_ID_MAIN }}
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - name: Install pinned runtime dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Restart Captain and verify actual source and ready revision
+        env:
+          PANEL_URL: ${{ secrets.PANEL_URL }}
+          PANEL_API_KEY: ${{ secrets.API_KEY }}
+          PANEL_SERVER_ID: ${{ secrets.SERVER_ID_MAIN }}
+        run: python scripts/panel_deploy.py --restart-and-verify --expected-revision "$GITHUB_SHA"
