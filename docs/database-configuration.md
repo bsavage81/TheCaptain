@@ -124,3 +124,7 @@ effect on the next bot restart and still requires profile table preparation and 
 No live settings migration was performed from the development checkout. Local migration and
 startup tests use synthetic SQLite data; live MySQL DDL/permissions and server restart remain
 deployment checks using the existing private database environment.
+
+Validation: 171 offline tests passed on the exact committed release, including 23 new
+database configuration tests. Ruff F checks and compilation passed. The existing private
+server `.env` remains the database connection source; it is not present in this local checkout.
