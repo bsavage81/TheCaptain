@@ -1,5 +1,8 @@
 # Database-backed Captain configuration
 
+**Live status:** the settings and registry migrations have now been applied and verified
+against the owner's MariaDB database. See [execution evidence](settings-registry-migration-execution.md).
+
 This supersedes the old botconfig.json-plus-constants startup instructions. Operational
 configuration is stored on **botdata row 1**, in a versioned `settings_json` LONGTEXT
 column (TEXT for offline SQLite tests). Existing `prefix` remains authoritative in its
@@ -121,10 +124,12 @@ effect on the next bot restart and still requires profile table preparation and 
   Their strict schema checks intentionally refuse the extra column; any future cleanup needs
   a separate reviewed migration that preserves this document.
 
-No live settings migration was performed from the development checkout. Local migration and
-startup tests use synthetic SQLite data; live MySQL DDL/permissions and server restart remain
-deployment checks using the existing private database environment.
+The live settings and registry migrations were subsequently executed using the privately
+provided existing `.env`; backup restoration, unchanged original data and the runtime database
+initializer were verified. See the execution report above. Full bot readiness and Google/Discord
+delivery remain server checks; no historical import or messaging was performed.
 
 Validation: 171 offline tests passed on the exact committed release, including 23 new
 database configuration tests. Ruff F checks and compilation passed. The existing private
-server `.env` remains the database connection source; it is not present in this local checkout.
+server `.env` remains the database connection source; the owner subsequently provided a private
+local copy for the authorized migration. It is Git-ignored and was never committed.

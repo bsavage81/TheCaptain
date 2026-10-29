@@ -1,5 +1,10 @@
 # Player registry and monthly check-ins
 
+**Live schema status:** the settings and eight registry tables have now been created and
+verified on the owner's MariaDB database; see [execution evidence](settings-registry-migration-execution.md).
+The registry is empty and all activation flags remain off. The development-stage statements
+below describe the initial implementation; no historical import or messaging has been run.
+
 Implemented in development on October 28, 2026. No production database migration,
 historical import, Discord announcement, reminder, command sync or deployment was performed.
 Every feature defaults off. Obtain owner approval before those production actions.
