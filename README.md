@@ -5,6 +5,12 @@ It handles Coastal applications in the Realm Portal community and keeps its own 
 configuration, database and deployment. PortalBot is a read-only architectural reference.
 There is one production bot. Git development branches do not select different bots or database rows.
 
+Player profiles and monthly check-ins are implemented as **disabled-by-default** features.
+See the [registry, historical import and check-in runbook](docs/player-registry.md) for the
+additive migration, inspected Season 3–10 sources, identity review commands, eligibility rules,
+configuration and recovery. Production migration, historical imports, announcements and reminders
+require explicit owner/administrator approval before use. Startup never creates registry tables.
+
 ## Install and test locally
 
 Tested runtime: CPython 3.12.14. CI runs on Python 3.12 on Windows and Linux.

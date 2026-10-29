@@ -52,6 +52,7 @@ def service():
 
 def interaction(user=1):
     return NS(user=NS(id=user, mention="<synthetic>", display_name="Synthetic", avatar=True),
+              guild=None,
               response=NS(send_message=AsyncMock(), send_modal=AsyncMock(), defer=AsyncMock(), is_done=Mock(return_value=False)),
               followup=NS(send=AsyncMock()), channel=NS(id=104), channel_id=104, message=NS(edit=AsyncMock()))
 
@@ -109,7 +110,7 @@ async def test_registration_exactly_once():
     assert len(bot.cogs) == 6  # jishaku plus five Captain cogs
     names = lambda guild: sorted(c.name for c in bot.tree.get_commands(guild=discord.Object(guild)))
     assert names(101) == ["applycoastal"]
-    expected = ["addpoi_end", "addpoi_end_returngateway", "addpoi_endcity_claim", "addpoi_nether", "addpoi_overworld", "approveapp", "denyapp", "guide"]
+    expected = ["addpoi_end", "addpoi_end_returngateway", "addpoi_endcity_claim", "addpoi_nether", "addpoi_overworld", "approveapp", "denyapp", "guide", "guide-announcement"]
     assert names(102) == sorted(expected)
     assert names(103) == sorted(expected + ["applycoastal"])
     assert [c.name for c in bot.tree.get_commands()] == ["repeat"]

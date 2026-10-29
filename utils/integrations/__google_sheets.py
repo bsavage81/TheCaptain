@@ -68,6 +68,7 @@ class SheetsService:
                 logging.getLogger(__name__).warning("Season 10 guide needs operator-supplied links, question and answer; guide role assignment is unavailable until configured.")
             # Publish only a fully initialized integration. Failed startup never exposes half-ready state.
             self.applications = applications
+            self.client = client
             self.markers = markers
             self.application_content = application_content
             self.poi_content = poi_content
@@ -107,7 +108,33 @@ class SheetsService:
         return entry
 
     async def submit_application(self, row):
-        return await self._run(lambda: self._insert(self.applications, row, 3))
+        entry = await self._run(lambda: self._insert(self.applications, row, 3))
+        saved = list(row)
+        saved[0] = entry
+        await self._capture_profile(saved, fresh_submission=True)
+        return entry
+
+    async def _capture_profile(self, row, *, fresh_submission=False):
+        if not self.settings.get("profiles_enabled", False):
+            return
+        def capture():
+            from utils.database.__database import db
+            from utils.players.history import parse_rows
+            from utils.players.registry import capture_current
+            headers = ["entryID", "Discord Name", "Discord Nickname", "Discord Long ID", "What is your Gamertag?"]
+            # Existing Season 10 live contract: timestamp T, decision U.
+            headers += [""] * 14 + ["Timestamp", "Approved?"]
+            records = parse_rows([headers, row], season=self.settings.get("checkin_season", 10),
+                source=f"https://docs.google.com/spreadsheets/d/{self.applications.spreadsheet_id}/edit#gid={self.applications.id}",
+                header_row=1, trusted_ids=True)
+            with db.connection_context():
+                for record in records:
+                    capture_current(record, fresh_submission=fresh_submission)
+        try:
+            await asyncio.to_thread(capture)
+        except Exception as error:
+            # Sheet write succeeded. Never invite resubmission because a registry mirror failed.
+            logging.getLogger(__name__).warning("live_profile_capture_failed error=%s; reconcile_current_sheet=true", type(error).__name__)
 
     async def submit_poi(self, dimension, row):
         return await self._run(lambda: self._insert(self.markers[dimension], row, 2))
@@ -130,5 +157,11 @@ class SheetsService:
             raise ValueError("Invalid application status")
         def write():
             # Resolve again under lock: an intervening insertion can shift rows.
-            self.applications.update_cell(self._find_row(appnumber), 21, status)
+            position = self._find_row(appnumber)
+            self.applications.update_cell(position, 21, status)
         await self._run(write)
+        if self.settings.get("profiles_enabled"):
+            try:
+                await self._capture_profile(await self.application_record(appnumber))
+            except Exception as error:
+                logging.getLogger(__name__).warning("decided_profile_capture_failed error=%s; reconcile_current_sheet=true", type(error).__name__)

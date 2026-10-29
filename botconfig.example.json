@@ -24,5 +24,17 @@
   "guide_answer": "armadillo",
   "guide_answer_match": "contains",
   "logo_url": "https://cdn.discordapp.com/attachments/488792053002534920/1561597489516384357/IMG_8282.png?ex=6ae374be&is=6ae2233e&hm=b3b70039d6d9875d55c2f53827ceaed69ba1b19b5b635a5de7257f2692fa34f0&",
-  "guide_cells": {}
+  "guide_cells": {},
+  "profiles_enabled": false,
+  "checkin_enabled": false,
+  "checkin_announcements_enabled": false,
+  "checkin_reminders_enabled": false,
+  "checkin_timezone": "America/Chicago",
+  "checkin_season": 10,
+  "checkin_season_name": "The Mighty Mesa Reborn",
+  "checkin_channel_id": null,
+  "checkin_staff_channel_id": null,
+  "checkin_eligible_role_id": null,
+  "checkin_reminder_days": [15, 25],
+  "profile_sources": {}
 }

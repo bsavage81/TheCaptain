@@ -44,6 +44,8 @@ class TheCaptain(commands.Bot):
         for extension in EXTENSIONS:
             if extension not in self.extensions:
                 await self.load_extension(extension)
+        if self.settings.get("profiles_enabled") and "utils.players.cog" not in self.extensions:
+            await self.load_extension("utils.players.cog")
 
     async def on_ready(self):
         logging.getLogger(__name__).info("TheCaptain ready")
