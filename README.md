@@ -148,7 +148,8 @@ Git metadata displays unknown without blocking readiness; database credentials a
 There is no automatic slash-command sync. Tier-3 manual `sync <guild|global|all>` and upstream
 owner-only jishaku are preserved. Application views/modals expire in five minutes and lose state
 on restart; the retained `persistent_views` database field no longer drives registration.
-Deployment remains manual on `main`; no panel restart workflow was added.
+Main pushes now use the existing panel secrets for a checked restart and verify the actual
+server commit, guide source and ready-banner revision. See [deployment verification](docs/deployment-verification.md).
 
 ## Review and rollout
 
