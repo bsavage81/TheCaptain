@@ -9,6 +9,8 @@ EXTENSIONS = (
     "utils.coastal_guide.cg_main",
     "utils.coastal_poi.poi_main",
 )
+# Compatibility values for explicit legacy-file conversion/tests only. Production
+# settings come from botdata.settings_json; the migration seed is not a runtime fallback.
 LEGACY_IDS = {
     "CoastalInviteChannel": 443614533815369728,
     "CoastalGuideRole": 1565125349044527184,

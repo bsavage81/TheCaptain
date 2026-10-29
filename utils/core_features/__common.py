@@ -9,8 +9,11 @@ from .__constants import ROOT, LEGACY_IDS, SHEET_DEFAULTS, GUIDE_DEFAULTS, LOGO_
 
 
 def load_settings(path=None, environ=None):
+    """Legacy-file converter for explicit migration/testing; main never calls this."""
     environ = os.environ if environ is None else environ
-    path = ROOT / "botconfig.json" if path is None else path
+    if path is None:
+        from utils.configuration import load_bootstrap
+        return load_bootstrap(environ)
     config = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
     config = {**LEGACY_IDS, **SHEET_DEFAULTS, **config}
     for key in ("token", "database_ip", "database_port", "database_username", "database_password", "database_schema", "database_ssl_mode", "database_ssl_ca", "bot_type"):

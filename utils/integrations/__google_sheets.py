@@ -29,6 +29,8 @@ class SheetsService:
         key = settings.get(f"{kind}_sheet_id")
         if key:
             return client.open_by_key(key)
+        if settings.get("configuration_source") == "database":
+            return client.open(settings[f"{kind}_sheet"])
         return client.open(settings.get(f"{kind}_sheet", SHEET_DEFAULTS[f"{kind}_sheet"]))
 
     def _connect(self):

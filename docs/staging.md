@@ -1,5 +1,11 @@
 # Single-deployment verification and rollback
 
+**Current configuration prerequisite:** operational settings now live in `botdata.settings_json`.
+Follow [database-configuration.md](database-configuration.md) to preview, back up and explicitly
+import the server configuration before merging/restarting the new runtime. Keep the old private
+JSON for rollback, but it is no longer a runtime configuration source. The older schema-cleanup
+steps below are historical procedures; do not rerun them against the consolidated schema.
+
 This is an operator checklist, not an executed deployment log. There is one production bot;
 no separate BETA deployment or database is required. Offline tests use synthetic SQLite and fake
 Discord/Sheets. Any manual integration checks must be separately authorized and use isolated

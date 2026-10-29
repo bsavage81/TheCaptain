@@ -3,13 +3,16 @@
 Implemented in development on October 28, 2026. No production database migration,
 historical import, Discord announcement, reminder, command sync or deployment was performed.
 Every feature defaults off. Obtain owner approval before those production actions.
+Operational configuration is now in `botdata.settings_json`; see the
+[database configuration runbook](database-configuration.md) before code rollout.
 
 ## Inspection and architecture
 
 The active runtime uses discord.py 2.7.1, Peewee 3.19 and encrypted MySQL/MariaDB.
 `DatabaseProxy` and per-worker `connection_context()` remain the connection boundary.
 Existing migrations are explicit Python modules with read-only default preflights;
-startup does no schema DDL. Production `botdata` and `administrators` remain untouched.
+startup does no schema DDL. Registry migration preserves `botdata` and `administrators`;
+the separate configuration migration adds `botdata.settings_json` explicitly.
 Historical `PortalbotProfile` references in `!archive` do not establish a usable current
 registry. No active profile, XUID resolution, scheduler or persistent check-in view existed.
 
@@ -166,7 +169,9 @@ to reconcile the current Sheet. A previously staged archive source still require
 
 ## Configuration and eligibility
 
-See `botconfig.example.json`. Defaults preserve existing behavior:
+The following keys live in `botdata.settings_json.settings`. The reviewed one-time input is
+`config/botdata-settings.seed.json`; it is never read as a runtime fallback. Activation defaults
+preserve existing behavior:
 
 ```json
 {
@@ -192,13 +197,13 @@ roster in Season 5 Files, configure its ID with `season:4` and verify its header
 before importing. Unknown layouts are reported and need a tested adapter; do not guess columns.
 
 The owner supplied announcement channel `504140612019421184` and staff-report channel
-`1565171730480111716`. These are included in the configuration example; live guild ownership,
+`1565171730480111716`. These are included in the database migration seed; live guild ownership,
 bot permissions and staff-channel privacy still need verification. The owner selected inactive
 role `547138462357258242` as the check-in exemption. No separate deployment
-configuration format is needed: add these keys to the running bot's existing private
-`botconfig.json`; existing environment variables retain the token/database connection settings.
-Do not replace the running configuration with the example, which includes zero placeholder
-IDs for other required settings. The private files are not present in this development checkout.
+configuration file is needed: import the reviewed seed or the server's existing `botconfig.json`
+once through `migrations.botdata_settings`. The database then owns these values, and existing
+environment variables retain token/database connection secrets. See the configuration runbook
+for preview, backup, apply and later `--set` updates. Private credentials are not present here.
 
 With `checkin_inactive_role_id` configured, every current human Coastal guild member without
 that role is required to check in. This owner-selected policy takes precedence over positive
@@ -296,6 +301,7 @@ Commands:
 ## Deployment checklist and development validation
 
 1. Review code, source mapping, MySQL preflight and a restorable private backup in staging.
+   Prepare database configuration through `migrations.botdata_settings` before restarting the new runtime.
 2. Obtain explicit owner approval for production migration; run the explicit additive apply.
 3. Install pinned requirements, deploy code with only profiles enabled, and manually sync guild
    commands through the existing sync command. Verify service-account access via discovery.

@@ -32,24 +32,33 @@ and allow loopback only for Windows asyncio internals. Never use production data
 
 ## Private production configuration
 
-Copy `botconfig.example.json` to `botconfig.json` and `.env.example` to `.env`. Keep both private.
-Replace the zero guild/channel IDs with the **existing production** values. Keep the existing
-MySQL schema name, token, owners and roles; do not copy example IDs over working configuration.
-The lower-case `token` and `database_*` environment keys still override their JSON counterparts.
+Operational settings now live in **botdata row 1**, with the existing SQL `prefix` column and
+a versioned `settings_json` document. Follow the [database configuration migration runbook](docs/database-configuration.md)
+**before merging or restarting this runtime**. Its reviewed seed contains the exact server values
+supplied by the owner; explicit import of the server's existing `botconfig.json` preserves overrides.
+Preview first, verify an independent backup, then apply explicitly. Existing different database
+settings require explicit replacement. The source JSON file is never modified.
+
+Keep lower-case `token` and `database_*` bootstrap keys in the existing private environment or
+`.env` (see `.env.example`), and preserve private `creds.json`. These secrets are not stored in
+the settings document. Startup does not read botconfig.json or fall back to operational constants;
+missing/incomplete database configuration fails closed. Editing the one-time migration seed does
+not configure a running bot. Future changes use the database or the migration CLI's `--set` mode.
 For the new owner-approved MariaDB connection use `database_ssl_mode=self_signed`: encryption is
 required, while the provider's self-signed certificate is accepted explicitly. The code defaults to
 `verify_identity` if this setting is absent; `database_ssl_ca` optionally supplies a provider CA path.
-Startup reads `botdata` row **1** and preserves it unchanged. Remove `bot_type` from the production
-environment/JSON. A legacy `STABLE` value is tolerated and discarded; any other value is rejected,
+Startup reads `botdata` row **1**. Remove `bot_type` from the production
+environment. A legacy `STABLE` value is tolerated and discarded; any other value is rejected,
 so a retired BETA instance cannot silently become another production writer. Nothing in this
 repository stops either currently running bot; retirement and rollout require operator action.
 
-Required JSON IDs: `MRP`, `Coastal`, `CoastalMRP`, `CoastalApplications`, `CoastalOPTeam`,
+Required operational IDs include `MRP`, `Coastal`, `CoastalMRP`, `CoastalApplications`, `CoastalOPTeam`,
 `CoastalMapUpdates`. `MRP`/`CoastalMRP` are still required for applications in Realm Portal.
-`PBtest` is an optional existing guild scope, not another deployment: omit it when unused or retain
+`PBtest` is an optional existing guild scope, not another deployment: set it to null when unused or retain
 its current ID to preserve command availability. `OPTeamRole` retains the `OP Team` name check;
 an integer opts into a role-ID check. Notification roles use `CoastalOPTeam` separately.
-The guide/invite ID defaults remain unchanged; confirm their current purpose rather than inventing IDs.
+The settings seed preserves the server's supplied guide/invite IDs, including guide role
+`1565125349044527184`. Unused old server settings are retained under `legacy_settings`.
 
 ## Season 10 Sheets and service account
 
@@ -65,12 +74,12 @@ The supplied file is read only during explicit startup, never during imports or 
   "credentials_path": "creds.json",
   "application_sheet": "CCS10 Realm Application",
   "markers_sheet": "Coastal Markers S10",
-  "application_sheet_id": null,
-  "markers_sheet_id": null
+  "application_sheet_id": "1ltMnItNgDBk5FhgsC-afi0l17OBnfOTcKPIkcSw9zvE",
+  "markers_sheet_id": "11xN9e9hXOsj0oBlrVYHxPFEJJoWAzfBPRR-5bOk4Hy8"
 }
 ```
 
-By title, use the Season 10 defaults above or explicit accessible file titles. Duplicate accessible
+These are operational database settings. By title, use explicit accessible file titles. Duplicate accessible
 titles may be ambiguous. Prefer keys when available: set `application_sheet_id` and/or
 `markers_sheet_id` to the actual key from `/spreadsheets/d/<key>/...`. A nonempty key uses
 `open_by_key()` and takes precedence over the title for that file. No spreadsheet IDs are invented.
@@ -94,10 +103,10 @@ loose-acceptance instruction. Existing retries, timeouts, ownership and role che
 The default logo is the owner's replacement Discord CDN image, configured in `logo_url`.
 
 Override `guide_web_url`, `guide_pdf_url`, `guide_question`, `guide_answer`, `guide_answer_match`
-(`contains` or `exact`) and `logo_url` in JSON as needed. To source guide values from the Season 10
+(`contains` or `exact`) and `logo_url` in the database settings as needed. To source guide values from the Season 10
 markers `Questions` worksheet, set `guide_cells` to an object mapping any of `web_url`, `pdf_url`,
 `question`, `answer` to owner-verified uppercase A1 addresses. These cells override the corresponding
-JSON/default values. No guide cells are assumed: B1:B6 belongs to POI prompts. At least one guide
+database values. No guide cells are assumed: B1:B6 belongs to POI prompts. At least one guide
 link, a question and an answer are required; explicitly blank/missing content produces a clear
 operator-configuration response without assigning roles. No old Season 9 links or logo remain active.
 
@@ -155,4 +164,4 @@ The owner-requested bot/Coastal identifiers have been restored to the new databa
 original production row. For an earlier two-column cleanup, preview
 `python -m migrations.restore_coastal_ids`, then explicitly use `--apply` to restore missing fields
 from captain_botdata_legacy. Existing differing values are never overwritten. These retained IDs do
-not silently replace the current JSON guild/channel mappings.
+not silently replace the named operational guild/channel mappings in the new settings document.

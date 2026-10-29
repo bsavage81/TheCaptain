@@ -32,7 +32,8 @@ def load_guide_content(settings, questions=None):
     if not isinstance(cells, dict) or set(cells) - {"web_url", "pdf_url", "question", "answer"}:
         raise ValueError("guide_cells supports web_url, pdf_url, question and answer only")
     for key in ("web_url", "pdf_url", "question", "answer"):
-        value = settings.get(f"guide_{key}", GUIDE_DEFAULTS[key]) or ""
+        value = (settings[f"guide_{key}"] if settings.get("configuration_source") == "database"
+                 else settings.get(f"guide_{key}", GUIDE_DEFAULTS[key])) or ""
         if key in cells:
             address = cells[key]
             if not isinstance(address, str) or not re.fullmatch(r"[A-Z]+[1-9][0-9]*", address):
@@ -46,7 +47,8 @@ def load_guide_content(settings, questions=None):
     for key in ("web_url", "pdf_url"):
         if values[key] and not values[key].startswith(("https://", "http://")):
             raise ValueError("Guide links must use HTTP or HTTPS")
-    match = settings.get("guide_answer_match", GUIDE_DEFAULTS["answer_match"])
+    match = (settings["guide_answer_match"] if settings.get("configuration_source") == "database"
+             else settings.get("guide_answer_match", GUIDE_DEFAULTS["answer_match"]))
     if match not in ("contains", "exact"):
         raise ValueError("guide_answer_match must be contains or exact")
     return GuideContent(**values, answer_match=match)
@@ -66,7 +68,7 @@ async def post_guide_announcement(bot, interaction):
     command_channel = f"<#{bot.settings['CoastalMRP']}>"
     message = (
         "@everyone, Ahoy there mateys! After much time on the harsh seas, "
-        "we have finally found a welcoming shore: **" + REALM_NAME + "**! "
+        "we have finally found a welcoming shore: **" + bot.settings.get("realm_name", REALM_NAME) + "**! "
         "Before stepping onto these new lands, every sailor must read and agree to the Season 10 guide, and fill out the Coastal Application */applycoastal*. "
         "Take your time, as there are new and amended rules to learn!\n\n"
         f"Please head to {command_channel} and use **/guide**.\n\n"
@@ -156,7 +158,7 @@ async def converse(bot, channel, author, role, realmactiverole, responsechannel)
     if answer.content.strip().casefold() == "yes":
         await author.add_roles(role)
         await author.add_roles(realmactiverole)
-        await channel.send(f"Great! Have fun Playing {REALM_NAME}")
+        await channel.send(f"Great! Have fun Playing {bot.settings.get('realm_name', REALM_NAME)}")
         embed = discord.Embed(title="Season 10 Guide Agreement", description=author.name + " has agreed to the season 10 guide!", color=0x000800)
         embed.set_thumbnail(url=bot.settings.get("logo_url"))
         await responsechannel.send(embed=embed)
