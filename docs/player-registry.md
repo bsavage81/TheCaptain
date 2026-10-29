@@ -177,8 +177,8 @@ See `botconfig.example.json`. Defaults preserve existing behavior:
   "checkin_timezone": "America/Chicago",
   "checkin_season": 10,
   "checkin_season_name": "The Mighty Mesa Reborn",
-  "checkin_channel_id": null,
-  "checkin_staff_channel_id": null,
+  "checkin_channel_id": 504140612019421184,
+  "checkin_staff_channel_id": 1565171730480111716,
   "checkin_eligible_role_id": null,
   "checkin_reminder_days": [15, 25],
   "profile_sources": {}
@@ -189,6 +189,15 @@ See `botconfig.example.json`. Defaults preserve existing behavior:
 `worksheet`, `trusted_discord_ids`. It does not grant access. For the cross-filed Season 4
 roster in Season 5 Files, configure its ID with `season:4` and verify its header/worksheet
 before importing. Unknown layouts are reported and need a tested adapter; do not guess columns.
+
+The owner supplied announcement channel `504140612019421184` and staff-report channel
+`1565171730480111716`. These are included in the configuration example; live guild ownership,
+bot permissions and staff-channel privacy still need verification. Leaving
+`checkin_eligible_role_id` null selects staff-managed eligibility. No separate deployment
+configuration format is needed: add these keys to the running bot's existing private
+`botconfig.json`; existing environment variables retain the token/database connection settings.
+Do not replace the running configuration with the example, which includes zero placeholder
+IDs for other required settings. The private files are not present in this development checkout.
 
 Eligibility requires a linked profile, a current human Coastal guild member and **either**
 the explicitly configured eligibility role **or**, when no role is configured, a current-season

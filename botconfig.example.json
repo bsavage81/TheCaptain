@@ -32,8 +32,8 @@
   "checkin_timezone": "America/Chicago",
   "checkin_season": 10,
   "checkin_season_name": "The Mighty Mesa Reborn",
-  "checkin_channel_id": null,
-  "checkin_staff_channel_id": null,
+  "checkin_channel_id": 504140612019421184,
+  "checkin_staff_channel_id": 1565171730480111716,
   "checkin_eligible_role_id": null,
   "checkin_reminder_days": [15, 25],
   "profile_sources": {}
