@@ -1,5 +1,8 @@
 # Single-deployment verification and rollback
 
+See [deployment verification](deployment-verification.md) for the resolved Apollo Git
+conflict and the current workflow's checked restart, source-revision and readiness checks.
+
 **Current configuration prerequisite:** operational settings now live in `botdata.settings_json`.
 Follow [database-configuration.md](database-configuration.md) to preview, back up and explicitly
 import the server configuration before merging/restarting the new runtime. Keep the old private
@@ -16,7 +19,8 @@ resources/synthetic records; do not exercise writes against production Sheets as
 1. Review the PR against main `6464132`; do not merge/deploy until the owner approves. Save current
    operational code, dependencies, private `.env`/JSON and panel settings outside Git. Verify restore.
 2. Confirm repository `bsavage81/TheCaptain`, branch main and correct panel server `5ff9cb52`.
-   Deployment/restart stays manual; this branch adds no panel credentials or restart workflow.
+   Main pushes use the existing panel credentials for a checked restart and source/readiness
+   verification. Do not change credentials or the Apollo Startup command as part of routine deployment.
 3. Install locked requirements into Python 3.12; run compileall, Ruff, pytest and pip check. Review
    hosted CI/security checks and `docs/validation.md`. No live secrets belong in CI.
 4. Keep the current production schema and existing row 1. Follow `database-audit.md` for a private

@@ -19,6 +19,6 @@ jobs:
           cache-dependency-path: 'requirements*.txt'
       - run: python -m pip install -r requirements-dev.txt
       - run: python -m pip check
-      - run: python -m compileall -q main.py utils migrations tests
-      - run: python -m ruff check --select F main.py utils migrations tests
+      - run: python -m compileall -q main.py utils migrations scripts tests
+      - run: python -m ruff check --select F main.py utils migrations scripts tests
       - run: python -m pytest -q
