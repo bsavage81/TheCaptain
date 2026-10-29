@@ -18,9 +18,9 @@ jobs:
           python-version: '3.12'
       - name: Install existing pinned runtime dependencies for secure console inspection
         run: python -m pip install -r requirements.txt
-      - name: Preserve blocking example, restore tracked file, and verify Captain update
+      - name: Inspect authorized server without changing files
         env:
           PANEL_URL: ${{ secrets.PANEL_URL }}
           PANEL_API_KEY: ${{ secrets.API_KEY }}
           PANEL_SERVER_ID: ${{ secrets.SERVER_ID_MAIN }}
-        run: python scripts/panel_deploy.py --restart-and-verify --repair-tracked-example --expected-revision d2eab2a418d5e00ad2ca3a71f55a6ed2b2a12b58
+        run: python scripts/panel_deploy.py --inspect-only

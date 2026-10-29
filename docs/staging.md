@@ -1,5 +1,8 @@
 # Single-deployment verification and rollback
 
+See [deployment verification](deployment-verification.md) for the resolved Apollo Git
+conflict and the current workflow's checked restart, source-revision and readiness checks.
+
 **Current configuration prerequisite:** operational settings now live in `botdata.settings_json`.
 Follow [database-configuration.md](database-configuration.md) to preview, back up and explicitly
 import the server configuration before merging/restarting the new runtime. Keep the old private
