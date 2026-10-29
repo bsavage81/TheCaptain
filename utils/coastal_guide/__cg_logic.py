@@ -52,6 +52,48 @@ def load_guide_content(settings, questions=None):
     return GuideContent(**values, answer_match=match)
 
 
+async def post_guide_announcement(bot, interaction):
+    content = bot.guide_content
+    if not content.configured:
+        await interaction.response.send_message(
+            "Season 10 guide content is awaiting operator configuration. Contact an OP.",
+            ephemeral=True,
+        )
+        return
+    if interaction.guild is None or interaction.channel is None:
+        await interaction.response.send_message("Use this command in a server channel.", ephemeral=True)
+        return
+    command_channel = f"<#{bot.settings['CoastalMRP']}>"
+    message = (
+        "@everyone, Ahoy there mateys! After many months on the harsh seas, "
+        "we have finally found a welcoming shore: **" + REALM_NAME + "**! "
+        "Before stepping onto these new lands, every sailor must read and agree to the Season 10 guide. "
+        "Take your time, as there are new and amended rules to learn!\n\n"
+        f"Please head to {command_channel} and use **/guide**.\n\n"
+        "The Captain will DM you the guide, ask you a question, and then ask whether you agree to the rules. "
+        "Answer correctly and agree to the guide to receive your Season 10 guide and active player roles. "
+        "Make sure your DMs are open!\n\n"
+        "The full guide can also be found here:\n\n"
+    )
+    if content.web_url:
+        message += f"**Online version of the guide**\n{content.web_url}\n\n"
+    if content.pdf_url:
+        message += f"**PDF version of the guide**\n{content.pdf_url}\n\n"
+    message += "Thank you for sailing with us. Let's have some fun in Season 10!"
+    await interaction.response.defer(ephemeral=True, thinking=True)
+    try:
+        await interaction.channel.send(
+            message,
+            allowed_mentions=discord.AllowedMentions(everyone=True, roles=False, users=False),
+        )
+    except discord.HTTPException:
+        await interaction.followup.send(
+            "I couldn't post the announcement. Check my channel permissions and try again.", ephemeral=True,
+        )
+        return
+    await interaction.followup.send("Season 10 guide announcement posted.", ephemeral=True)
+
+
 async def run_guide(cog, interaction):
     bot = cog.bot
     if not bot.guide_content.configured:

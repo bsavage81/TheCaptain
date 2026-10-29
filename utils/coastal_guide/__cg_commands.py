@@ -3,7 +3,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 from utils.helpers.__checks import op_team
-from .__cg_logic import run_guide
+from .__cg_logic import run_guide, post_guide_announcement
 
 
 class CoastalGuideCMD(commands.Cog):
@@ -16,6 +16,15 @@ class CoastalGuideCMD(commands.Cog):
     )
     async def guide(self, interaction: discord.Interaction):
         await run_guide(self, interaction)
+
+    @app_commands.command(
+        name="guide-announcement",
+        description="Post the Season 10 guide announcement in this channel (pings everyone).",
+    )
+    @app_commands.guild_only()
+    @op_team()
+    async def guide_announcement(self, interaction: discord.Interaction):
+        await post_guide_announcement(self.bot, interaction)
 
 
 async def setup(bot):
