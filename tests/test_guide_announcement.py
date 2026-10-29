@@ -9,7 +9,7 @@ from utils.coastal_guide.__cg_logic import load_guide_content, post_guide_announ
 
 
 def announcement_context():
-    bot = NS(settings={"CoastalMRP": 123, "OPTeamRole": "OP Team"},
+    bot = NS(settings={"CoastalMRP": 123, "botspamChannel": 456, "OPTeamRole": "OP Team"},
              guide_content=load_guide_content({"guide_web_url": "https://example.com/season10",
                                                "guide_pdf_url": "https://example.com/season10.pdf"}))
     interaction = NS(client=bot, guild=NS(), channel=NS(send=AsyncMock()),
@@ -25,7 +25,8 @@ async def test_announcement_posts_current_links_and_explicit_everyone_mention():
     message = call.args[0]
     assert "@everyone" in message and "Season 10" in message
     assert "Season 9" not in message and "armadillo" not in message
-    assert "<#123>" in message
+    assert "<#456>" in message
+    assert "<#123>" not in message
     assert bot.guide_content.web_url in message and bot.guide_content.pdf_url in message
     mentions = call.kwargs["allowed_mentions"]
     assert mentions.everyone and not mentions.roles and not mentions.users
