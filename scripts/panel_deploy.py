@@ -3,6 +3,7 @@
 Never log API keys, panel URLs, startup commands, response bodies or private files.
 """
 import argparse
+import asyncio
 import hashlib
 import json
 import os
@@ -62,6 +63,42 @@ def normalized_hash(text):
     return hashlib.sha256(text.replace("\r\n", "\n").encode()).hexdigest()
 
 
+async def console_signals(panel):
+    import aiohttp
+    credentials = panel.get(f"/servers/{EXPECTED_SERVER}/websocket")["data"]
+    socket = credentials["socket"]
+    parsed = urlsplit(socket)
+    if parsed.scheme != "wss" or parsed.hostname != "v-dtx-12.apollopanel.com":
+        raise ValueError("Unexpected console socket origin")
+    output = []
+    async with aiohttp.ClientSession() as session:
+        async with session.ws_connect(socket, timeout=aiohttp.ClientWSTimeout(ws_close=5)) as ws:
+            await ws.send_json({"event": "auth", "args": [credentials["token"]]})
+            for _ in range(180):
+                try:
+                    message = await ws.receive(timeout=2)
+                except asyncio.TimeoutError:
+                    break
+                if message.type != aiohttp.WSMsgType.TEXT:
+                    break
+                payload = json.loads(message.data)
+                if payload.get("event") == "auth success":
+                    await ws.send_json({"event": "send logs", "args": [None]})
+                if payload.get("event") == "console output":
+                    output.extend(str(value) for value in payload.get("args", []))
+    text = "\n".join(output)
+    return {"logs_received": bool(output),
+            "git_local_changes_block_pull": "would be overwritten by merge" in text,
+            "git_divergent_branches": "divergent branches" in text,
+            "git_authentication_failed": "Authentication failed" in text or "could not read Username" in text,
+            "git_ownership_failed": "dubious ownership" in text,
+            "git_not_repository": "not a git repository" in text,
+            "git_up_to_date_reported": "Already up to date" in text,
+            "configuration_error": "Settings migration" in text or "migrations.botdata_settings" in text,
+            "bot_ready_logged": "TheCaptain ready" in text,
+            "guide_file_named_in_error": GUIDE in text and ("error:" in text or "fatal:" in text)}
+
+
 def inspect(panel, configured_server):
     payload = panel.get(f"/servers/{EXPECTED_SERVER}")
     attributes = payload["attributes"]
@@ -84,7 +121,7 @@ def inspect(panel, configured_server):
         for entry in variables.get("data", []):
             var = entry["attributes"]
             key, value = var["env_variable"], str(var.get("server_value", ""))
-            if key in ("AUTO_UPDATE", "USER_UPLOAD", "BRANCH", "GIT_BRANCH", "PY_FILE", "BOT_PY_FILE", "REQUIREMENTS_FILE"):
+            if key in ("AUTO_UPDATE", "USER_UPLOAD", "BRANCH", "GIT_BRANCH", "PY_FILE", "BOT_PY_FILE", "STARTUP_FILE", "REQUIREMENTS_FILE"):
                 safe[key] = value if re.fullmatch(r"[\w./ -]{0,120}", value) else "[nonstandard value]"
             if key in ("GIT_ADDRESS", "GIT_REPO", "GIT_URL"):
                 safe[key + "_is_captain_repo"] = "github.com/bsavage81/thecaptain" in value.casefold()
@@ -113,6 +150,11 @@ def inspect(panel, configured_server):
             revision = file_text(panel, ".git/" + ref)
             if revision and re.fullmatch(r"[0-9a-f]{40}\s*", revision):
                 report["server_commit"] = revision.strip()
+    try:
+        report["console_signals"] = asyncio.run(console_signals(panel))
+    except Exception as error:
+        report["console_inspection_error_type"] = type(error).__name__
+        report["console_inspection_http_status"] = getattr(error, "status", None)
     return report
 
 
