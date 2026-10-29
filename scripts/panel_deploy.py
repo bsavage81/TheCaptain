@@ -71,8 +71,10 @@ async def console_signals(panel):
     if parsed.scheme != "wss" or parsed.hostname != "v-dtx-12.apollopanel.com":
         raise ValueError("Unexpected console socket origin")
     output = []
+    panel_origin = urlsplit(panel.url)
     async with aiohttp.ClientSession() as session:
-        async with session.ws_connect(socket, timeout=aiohttp.ClientWSTimeout(ws_close=5)) as ws:
+        async with session.ws_connect(socket, origin=panel_origin.scheme + "://" + panel_origin.netloc,
+                                      timeout=aiohttp.ClientWSTimeout(ws_close=5)) as ws:
             await ws.send_json({"event": "auth", "args": [credentials["token"]]})
             for _ in range(180):
                 try:
