@@ -187,5 +187,11 @@ async def test_web_command_issues_private_code_without_identity_fields():
     await cog.applycoastal.callback(cog, i)
     call = i.response.send_message.call_args
     assert call.kwargs['ephemeral'] is True
-    code = call.args[0].split('```\n')[1].split('\n```')[0]
+    i.followup.send.assert_awaited_once()
+    followup = i.followup.send.call_args
+    assert followup.kwargs == {'ephemeral': True}
+    code = followup.args[0]
+    assert len(followup.args) == 1 and code == code.strip()
+    assert '`' not in code and '\n' not in code and ' ' not in code
+    assert code not in call.args[0]
     assert web.verify_ticket(code, SECRET, submitted_at=datetime.now(timezone.utc).isoformat())['uid'] == str(UID)

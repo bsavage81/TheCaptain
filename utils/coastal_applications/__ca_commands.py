@@ -57,10 +57,11 @@ class CoastalAppCMD(commands.Cog):
             view = discord.ui.View()
             view.add_item(discord.ui.Button(label="Open application form", url=self.web_portal.config.url))
             await interaction.response.send_message(
-                "Open the form below, or use the form on our Google Site, and paste this private access code. "
-                "It expires in 24 hours. Keep it private.\n```\n" + code + "\n```",
+                "Open the form below, or use the form on our Google Site, and paste the private access code "
+                "from the next message. It expires in 24 hours. Keep it private.",
                 view=view, ephemeral=True,
             )
+            await interaction.followup.send(code, ephemeral=True)
             return
 
         introem = discord.Embed(
