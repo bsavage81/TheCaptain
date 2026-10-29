@@ -14,6 +14,7 @@ administrator row and the old settings archive are preserved.
 | Data | Location |
 | --- | --- |
 | Command prefix | `botdata.prefix`, row 1 |
+| Coastal guide command destination | `botdata.bot_spam_channel_coastal`, row 1; verified Coastal channel `415213466522091542` |
 | Guild/channel/role IDs, owner IDs, Sheets IDs/titles, guide settings, logo, realm label, profile/check-in flags and timing | `botdata.settings_json.settings`, row 1 |
 | Unused server config keys, including Aurafall IDs and old BotID/ServerID aliases | `botdata.settings_json.legacy_settings`, row 1; retained for reference, not runtime routing |
 | Discord token and database connection/SSL parameters | Existing environment / private `.env` |
@@ -38,10 +39,13 @@ and inactive role `547138462357258242`. All new activation flags remain false. T
 obsolete `botconfig.example.json` has been removed so it cannot suggest a second runtime
 source. Editing a seed after import does not change database settings.
 
-Legacy typed columns `bot_id`, `bot_spam_channel_coastal`, `server_id_coastal` retain their
+Typed columns `bot_id`, `bot_spam_channel_coastal`, `server_id_coastal` retain their
 verified historical values. Their meanings are not inferred from ambiguous old JSON aliases
 such as `ServerID`/`ServerID2` (the supplied values point to the test guild). Active routing
-uses the explicit `Coastal`, `MRP`, `botspamChannel` and other named operational keys.
+uses explicit named operational keys. The guide announcement specifically uses the typed
+`bot_spam_channel_coastal` field, which is loaded into runtime settings without duplicating
+its value in the JSON document. The generic legacy `botspamChannel` and MRP's `CoastalMRP`
+are different destinations and must never be substituted for Coastal's bot command channel.
 
 ## Initial migration
 

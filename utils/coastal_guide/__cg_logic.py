@@ -89,7 +89,7 @@ async def post_guide_announcement(bot, interaction):
             "Use this command in a server channel.", ephemeral=True
         )
         return
-    command_channel = f"<#{bot.settings['botspamChannel']}>"
+    command_channel = f"<#{bot.settings['bot_spam_channel_coastal']}>"
     message = (
         "@everyone, Ahoy there mateys! After much time on the harsh seas, "
         "we have finally found a welcoming shore: **"

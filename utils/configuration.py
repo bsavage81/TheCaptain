@@ -131,14 +131,17 @@ def read_database_settings(backend):
     """Read-only, fail closed; stale local JSON and constants have no precedence."""
     if COLUMN not in {c.name for c in backend.get_columns("botdata")}:
         raise ValueError("Run migrations.botdata_settings before starting the database-configured runtime")
-    row = backend.execute_sql("SELECT settings_json, prefix FROM botdata WHERE id=1").fetchone()
+    row = backend.execute_sql("SELECT settings_json, prefix, bot_spam_channel_coastal FROM botdata WHERE id=1").fetchone()
     if row is None or row[0] is None:
         raise ValueError("Production database settings are missing; import them explicitly")
     if not isinstance(row[1], str) or not row[1].strip():
         raise ValueError("Production prefix is missing")
+    if type(row[2]) is not int or row[2] <= 0:
+        raise ValueError("Configure botdata.bot_spam_channel_coastal with Coastal's bot command channel")
     document = validate_document(json.loads(row[0]))
     config = dict(document["settings"])
     config["prefix"] = row[1]
+    config["bot_spam_channel_coastal"] = row[2]
     config["configuration_source"] = "database"
     config["credentials_path"] = str((ROOT / Path(config["credentials_path"])).resolve())
     return config

@@ -63,6 +63,7 @@ def test_apply_preserves_legacy_values_and_is_idempotent(backend):
         assert (row.prefix, row.bot_id, row.server_id_coastal, row.bot_spam_channel_coastal) == ("%", 987, 123, 456)
         assert not Administrators.select().exists()
         assert read_database_settings(backend)["prefix"] == "%"
+        assert read_database_settings(backend)["bot_spam_channel_coastal"] == 456
 
 
 def test_flat_server_file_import_preserves_values_and_filters_secrets(backend):
@@ -142,6 +143,26 @@ def test_no_runtime_json_file_or_seed_precedence(backend, document, monkeypatch)
     monkeypatch.setattr(Path, "read_text", denied)
     with backend.connection_context():
         assert read_database_settings(backend)["CoastalGuideRole"] == 123456789012345678
+
+
+def test_coastal_bot_spam_uses_authoritative_sql_column(backend):
+    apply(backend)
+    with backend.connection_context():
+        before = backend.execute_sql("SELECT settings_json FROM botdata WHERE id=1").fetchone()[0]
+        BotData.update(bot_spam_channel_coastal=789).where(BotData.id == 1).execute()
+        config = read_database_settings(backend)
+        assert config["bot_spam_channel_coastal"] == 789
+        assert config["botspamChannel"] != 789
+        assert config["CoastalMRP"] != 789
+        assert backend.execute_sql("SELECT settings_json FROM botdata WHERE id=1").fetchone()[0] == before
+
+
+def test_missing_coastal_bot_spam_never_uses_mrp_or_generic_channel(backend):
+    apply(backend)
+    with backend.connection_context():
+        BotData.update(bot_spam_channel_coastal=0).where(BotData.id == 1).execute()
+        with pytest.raises(ValueError, match="bot_spam_channel_coastal"):
+            read_database_settings(backend)
 
 
 def test_database_startup_loads_config_before_owner_seeding(backend, document):
