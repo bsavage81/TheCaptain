@@ -18,6 +18,7 @@ class Player(BaseModel):
     first_application = CharField(null=True)
     first_season = IntegerField(null=True)
     membership = CharField(default="unknown")
+    inactive = BooleanField(default=False)
     created_at = DateTimeField(default=utcnow)
     updated_at = DateTimeField(default=utcnow)
 

@@ -70,17 +70,55 @@ class Players(commands.Cog):
         await database(preflight)
         self.view = CheckInView(self)
         self.bot.add_view(self.view)
+        if self.settings.get("checkin_inactive_role_id"):
+            self.role_sync.start()
         if self.settings.get("checkin_enabled"):
             self.schedule.start()
 
     def cog_unload(self):
         self.schedule.cancel()
+        self.role_sync.cancel()
         if hasattr(self, "view"):
             self.view.stop()
 
     async def scope(self, interaction):
         if interaction.guild_id != self.settings["Coastal"]:
             raise app_commands.CheckFailure("Use this command in Coastal Craft")
+
+    @commands.Cog.listener()
+    async def on_member_update(self, before, after):
+        role = self.settings.get("checkin_inactive_role_id")
+        if not role or after.guild.id != self.settings["Coastal"] or after.bot:
+            return
+        if any(r.id == role for r in before.roles) != any(r.id == role for r in after.roles):
+            await self.sync_member(after)
+
+    @commands.Cog.listener()
+    async def on_member_join(self, member):
+        if member.guild.id == self.settings["Coastal"] and not member.bot:
+            await self.sync_member(member)
+
+    async def sync_member(self, member):
+        def write():
+            player = Player.get_or_none(Player.discord_id == member.id)
+            if player is not None:
+                checkins.sync_inactive(player, member, self.settings)
+        await database(write)
+
+    @tasks.loop(minutes=15)
+    async def role_sync(self):
+        try:
+            guild = self.bot.get_guild(self.settings["Coastal"])
+            if guild is not None:
+                if not guild.chunked:
+                    await guild.chunk(cache=True)
+                await database(lambda: checkins.sync_guild(guild, self.settings))
+        except Exception as error:
+            log.warning("inactive_profile_sync_failed error=%s", type(error).__name__)
+
+    @role_sync.before_loop
+    async def before_role_sync(self):
+        await self.bot.wait_until_ready()
 
     async def check_in(self, interaction):
         if not self.settings.get("checkin_enabled") or interaction.guild_id != self.settings["Coastal"]:
@@ -180,7 +218,9 @@ class Players(commands.Cog):
                 Player.discord_id == member.id) if member else None
             if p is None:
                 return "No linked profile; use setup and review."
-            return {"profile": p.__data__, "seasons": [r.__data__ for r in p.seasons.order_by(Participation.season).paginate(page, 20)],
+            checkins.sync_inactive(p, interaction.guild.get_member(p.discord_id), self.settings)
+            return {"profile": p.__data__, "tags": ["inactive"] if p.inactive else [],
+                    "seasons": [r.__data__ for r in p.seasons.order_by(Participation.season).paginate(page, 20)],
                     "identity_history": [r.__data__ for r in p.identities.order_by(-Identity.id).paginate(page, 20)]}
         await private_report(interaction, await database(report))
 
@@ -201,7 +241,8 @@ class Players(commands.Cog):
             if row.state != "imported":
                 registry.review(row.id, interaction.user.id)
                 registry.import_record(row.id)
-            return "Identity profile linked. Set eligibility separately after staff review of current Realm participation."
+            checkins.sync_inactive(Player.get_by_id(ImportRecord.get_by_id(row.id).player_id), member, self.settings)
+            return "Identity profile linked. Check-in eligibility follows the configured role policy."
         await private_report(interaction, await database(write))
 
     @profiles.command(name="eligibility", description="Explicitly manage current-season check-in eligibility")
@@ -210,6 +251,8 @@ class Players(commands.Cog):
         await self.scope(interaction)
         await interaction.response.defer(ephemeral=True)
         def write():
+            if self.settings.get("checkin_inactive_role_id"):
+                return "Eligibility follows the inactive Discord role. Add/remove that role in Discord; its profile tag syncs automatically."
             p = Player.get_or_none(Player.discord_id == member.id)
             if p is None:
                 return "Link a reviewed profile first."
@@ -246,9 +289,13 @@ class Players(commands.Cog):
             current = checkins.period(self.settings)
             roster = checkins.roster(interaction.guild, self.settings, current)
             total, done = len(roster), sum(r[2] for r in roster)
+            unlinked = checkins.unlinked_required(interaction.guild, self.settings)
+            required = total + len(unlinked)
             return {"season": current.season, "year": current.year, "month": current.month,
-                    "eligibility_basis": "configured_role" if self.settings.get("checkin_eligible_role_id") else "staff_managed",
-                    "eligible": total, "checked_in": done, "completion_percent": round(100 * done / total, 1) if total else 0,
+                    "eligibility_basis": "without_inactive_role" if self.settings.get("checkin_inactive_role_id") else "configured_role" if self.settings.get("checkin_eligible_role_id") else "staff_managed",
+                    "required_members_without_profile": unlinked[(page-1)*20:page*20],
+                    "required_without_profile_count": len(unlinked), "linked_eligible": total,
+                    "eligible": required, "checked_in": done, "completion_percent": round(100 * done / required, 1) if required else 0,
                     "missing": [r[:2] for r in roster if not r[2]][(page-1)*20:page*20],
                     "reminders": [r.__data__ for r in Reminder.select().where(Reminder.period == current).order_by(Reminder.id).paginate(page, 20)],
                     "announcement_state": current.announcement_state, "staff_report_state": current.staff_report_state}
@@ -321,7 +368,9 @@ class Players(commands.Cog):
             member = guild.get_member(discord_id)
             try:
                 # Recheck immediately before delivery after any preceding slow Discord requests.
-                if await database(lambda: checkins.checked(Player.get_by_id(player_id), current)):
+                if not await database(lambda: checkins.eligible(Player.get_by_id(player_id), member, self.settings)):
+                    state = "skipped_ineligible"
+                elif await database(lambda: checkins.checked(Player.get_by_id(player_id), current)):
                     state = "skipped_checked_in"
                 elif checkins.calendar(self.settings)[1:3] != (current.year, current.month):
                     state = "skipped_closed"
@@ -345,10 +394,12 @@ class Players(commands.Cog):
         if not claimed:
             return
         roster = await database(lambda: checkins.roster(guild, self.settings, current))
+        unlinked = await database(lambda: checkins.unlinked_required(guild, self.settings)) if self.settings.get("checkin_inactive_role_id") else []
         failed = await database(lambda: Reminder.select().where((Reminder.period == current) &
             (Reminder.state.in_(["failed", "claimed"]))).count())
         await channel.send(f"Monthly check-in {current.year}-{current.month:02} / Season {current.season}: "
-            f"{sum(r[2] for r in roster)}/{len(roster)} eligible players checked in. "
+            f"{sum(r[2] for r in roster)}/{len(roster) + len(unlinked)} required members checked in. "
+            f"{len(unlinked)} members need profile linking. "
             f"{failed} failed/uncertain reminders. Use /checkin report for private details.",
             allowed_mentions=discord.AllowedMentions.none())
         await database(lambda: Period.update(staff_report_state="sent").where(Period.id == current.id).execute())

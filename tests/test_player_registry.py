@@ -517,3 +517,105 @@ def test_authenticated_discord_name_updates_preserve_history(backend):
     assert Player.get_by_id(p.id).discord_name == "NewName"
     assert Identity.select().where(Identity.value == "SyntheticName").exists()
     assert Identity.get(Identity.value == "NewName").verified
+
+
+def test_inactive_role_excludes_and_syncs_profile_tag(backend, config):
+    config["checkin_inactive_role_id"] = 547138462357258242
+    p = import_one()
+    user = member()
+    assert checkins.eligible(p, user, config)  # No staff attestation needed.
+    user.roles = [NS(id=config["checkin_inactive_role_id"])]
+    assert not checkins.eligible(p, user, config)
+    assert Player.get_by_id(p.id).inactive
+    assert Player.get_by_id(p.id).membership == "unknown"
+    user.roles = []
+    assert checkins.eligible(p, user, config)
+    assert not Player.get_by_id(p.id).inactive
+    assert p.seasons.get().realm_status == "unknown"
+
+
+def test_inactive_rule_precedes_staff_and_positive_role(backend, config):
+    config.update(checkin_inactive_role_id=42, checkin_eligible_role_id=43)
+    p = import_one()
+    Participation.create(player=p, season=10, source="staff", realm_status="staff_eligible")
+    assert not checkins.eligible(p, member(roles=[42, 43]), config)
+    assert checkins.eligible(p, member(), config)
+    assert not checkins.eligible(p, NS(id=OTHER, bot=True, roles=[]), config)
+
+
+async def test_role_change_listener_and_restart_reconciliation(backend, config):
+    config["checkin_inactive_role_id"] = 42
+    p = import_one()
+    before, after = member(), member(roles=[42])
+    guild = NS(id=100, chunked=True, get_role=Mock(return_value=NS(id=42)),
+               get_member=Mock(return_value=after))
+    before.guild = after.guild = guild
+    first = cog(config, guild)
+    await first.on_member_update(before, after)
+    assert Player.get_by_id(p.id).inactive
+    after.roles = []
+    await first.role_sync.coro(first)
+    assert not Player.get_by_id(p.id).inactive
+    # Missing/removed configured role fails closed, preserving last-known tag.
+    guild.get_role.return_value = None
+    assert not checkins.eligible(p, after, config)
+
+
+def test_inactive_sync_preserves_departed_profiles_and_unlinked_members(backend, config):
+    config["checkin_inactive_role_id"] = 42
+    p = import_one()
+    p.inactive = True
+    p.save()
+    checkins.sync_inactive(p, None, config)
+    assert Player.get_by_id(p.id).inactive
+    active = member(OTHER)
+    inactive = member(323456789012345678, roles=[42])
+    guild = NS(members=[active, inactive], get_member=Mock(return_value=None))
+    assert checkins.unlinked_required(guild, config) == [OTHER]
+    assert Player.select().count() == 1
+
+
+async def test_inactive_button_syncs_tag_without_deleting_checkin(backend, config):
+    config["checkin_inactive_role_id"] = 42
+    p = import_one()
+    current = checkins.period(config)
+    current.message_id, current.channel_id = 300, 200
+    current.save()
+    first = cog(config)
+    user = member()
+    assert "You're checked in" in await first.check_in(interaction(config, user))
+    user.roles = [NS(id=42)]
+    assert "eligibility" in await first.check_in(interaction(config, user))
+    assert Player.get_by_id(p.id).inactive
+    assert CheckIn.select().count() == 1
+
+
+async def test_report_counts_required_unlinked_members(backend, config):
+    config["checkin_inactive_role_id"] = 42
+    p = import_one()
+    linked, unlinked, inactive = member(), member(OTHER), member(323456789012345678, roles=[42])
+    guild = NS(id=100, chunked=True, members=[linked, unlinked, inactive],
+               get_member=Mock(side_effect=lambda uid: linked if uid == UID else None))
+    event = interaction(config)
+    event.guild = guild
+    first = cog(config, guild)
+    await Players.report.callback(first, event)
+    report = json.loads(event.followup.send.await_args.args[0])
+    assert report["eligibility_basis"] == "without_inactive_role"
+    assert report["eligible"] == 2
+    assert report["linked_eligible"] == 1
+    assert report["required_members_without_profile"] == [OTHER]
+    assert report["missing"] == [[p.id, UID]]
+
+
+async def test_profile_view_displays_inactive_tag(backend, config):
+    config["checkin_inactive_role_id"] = 42
+    p = import_one()
+    user = member(roles=[42])
+    guild = NS(get_member=Mock(return_value=user))
+    event = interaction(config)
+    event.guild = guild
+    await Players.view_profile.callback(cog(config, guild), event, player_id=p.id)
+    report = json.loads(event.followup.send.await_args.args[0])
+    assert report["tags"] == ["inactive"]
+    assert report["profile"]["inactive"] is True

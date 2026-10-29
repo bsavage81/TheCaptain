@@ -72,7 +72,7 @@ All tables use the existing Peewee proxy and database engine; SQLite is used onl
 
 | Table | Purpose and constraints |
 | --- | --- |
-| `captain_player` | Stable AutoField player ID; nullable unique Discord ID and XUID; current names, first known application/season, membership, UTC create/update timestamps |
+| `captain_player` | Stable AutoField player ID; nullable unique Discord ID and XUID; current names, first known application/season, membership, role-synced inactive flag, UTC create/update timestamps |
 | `captain_identity` | Player, identifier kind/value, verified flag, source record key, observation timestamp; unique player/kind/value/source |
 | `captain_participation` | Player/season/source unique; application date/status, observed Discord membership, explicit Realm tracking status |
 | `captain_import_record` | Immutable unique SHA-256 source key, identity-only payload, state, linked player, reviewer/time, matching evidence; full source reference retained |
@@ -180,6 +180,7 @@ See `botconfig.example.json`. Defaults preserve existing behavior:
   "checkin_channel_id": 504140612019421184,
   "checkin_staff_channel_id": 1565171730480111716,
   "checkin_eligible_role_id": null,
+  "checkin_inactive_role_id": 547138462357258242,
   "checkin_reminder_days": [15, 25],
   "profile_sources": {}
 }
@@ -192,24 +193,39 @@ before importing. Unknown layouts are reported and need a tested adapter; do not
 
 The owner supplied announcement channel `504140612019421184` and staff-report channel
 `1565171730480111716`. These are included in the configuration example; live guild ownership,
-bot permissions and staff-channel privacy still need verification. Leaving
-`checkin_eligible_role_id` null selects staff-managed eligibility. No separate deployment
+bot permissions and staff-channel privacy still need verification. The owner selected inactive
+role `547138462357258242` as the check-in exemption. No separate deployment
 configuration format is needed: add these keys to the running bot's existing private
 `botconfig.json`; existing environment variables retain the token/database connection settings.
 Do not replace the running configuration with the example, which includes zero placeholder
 IDs for other required settings. The private files are not present in this development checkout.
 
-Eligibility requires a linked profile, a current human Coastal guild member and **either**
-the explicitly configured eligibility role **or**, when no role is configured, a current-season
-`staff_eligible` participation record. The configured role takes precedence. Existing active/
-guide roles are not selected automatically. Configure a role only after staff confirms its
-meaning. Role-based eligibility is an administrative assumption about membership; staff-managed
-eligibility is an explicit attestation, and neither asserts automatic Realm API verification.
-Historical applications and Discord membership alone never qualify someone.
+With `checkin_inactive_role_id` configured, every current human Coastal guild member without
+that role is required to check in. This owner-selected policy takes precedence over positive
+eligibility roles and staff-managed attestations. It is a check-in requirement, not proof of
+Realm access. Bots and departed members are excluded. A linked identity profile is still needed
+to record a check-in; reports include required members without profiles in the total and list
+them separately for staff linking. Unlinked members do not receive automated profile-based DMs.
+
+The Discord role is the source of truth for the `captain_player.inactive` flag and the
+`inactive` tag displayed by `/playerprofiles view`. Role additions/removals sync through member
+events, on joining, during check-in/report/profile lookups, and through a full reconciliation
+after bot readiness and every 15 minutes. This reconciliation runs with profiles enabled even
+if monthly announcements/reminders are disabled. Missing configured roles fail eligibility
+closed and are logged for configuration review. A departed member's last-known flag is retained,
+not guessed from absence. No Discord roles are automatically assigned or removed, and changing
+the flag preserves identity history, membership attestations and all historical check-ins.
+
+For other deployments that omit `checkin_inactive_role_id`, the legacy alternatives remain:
+an explicitly configured positive eligibility role, or staff-managed current-season
+`staff_eligible` records when neither role policy is configured. Neither mode verifies Realm
+membership through an API. The existing guide/active roles are not selected automatically.
 
 `/playerprofiles link member:... gamertag:... confirm:True` provides a staff-confirmed identity
-path when there is no application; it grants no eligibility. `/playerprofiles eligibility
-member:... eligible:True|False` sets the staff-managed current-season tracking status. It does
+path when there is no application; check-in requirements then follow the configured role rule.
+`/playerprofiles eligibility member:... eligible:True|False` sets the staff-managed current-season
+tracking status only in the fallback mode. With the inactive-role policy it directs staff to
+manage the role in Discord instead. It does
 not assign Discord roles or modify Realm access. Existing status values distinguish unknown,
 staff eligible and staff ineligible. Do not delete profiles when someone leaves Discord.
 
@@ -285,7 +301,7 @@ Commands:
    commands through the existing sync command. Verify service-account access via discovery.
 4. Review inaccessible/unsupported sources and ambiguous identities before authorizing imports.
    Run confirmed imports only with administrator approval; re-run safely after interruption.
-5. Staff must establish eligibility, configure real channels and timezone/season, and approve
+5. Staff must verify the inactive-role policy, link required members' profiles, configure real channels and timezone/season, and approve
    enabling check-ins/announcements. Verify one announcement and the restart-persistent button.
 6. Obtain separate approval before enabling reminders; confirm staff channel privacy and DM timing.
 7. Monitor sanitized failure logs and private reports. Roll back by disabling flags and retaining data.
@@ -310,6 +326,6 @@ command and an interaction mock without `guild`); they were corrected to match e
 Production Discord delivery, live MariaDB migration/concurrency and archive completeness remain
 operator/staging checks, not claims inferred from mocked tests.
 
-Final development validation: **141 tests passed**, with one existing discord.py `audioop`
+Initial development validation: **141 tests passed**, with one existing discord.py `audioop`
 deprecation warning. Compileall, Ruff undefined/unused-name checks, `git diff --check`, and the
 installed dependency consistency check passed. No production actions were performed.
