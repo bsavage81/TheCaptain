@@ -5,6 +5,11 @@ It handles Coastal applications in the Realm Portal community and keeps its own 
 configuration, database and deployment. PortalBot is a read-only architectural reference.
 There is one production bot. Git development branches do not select different bots or database rows.
 
+The optional [Google Sites application portal](docs/application-web-portal.md) uses the existing
+question/response schema and bot review flow. Its Apps Script source is in `apps_script/coastal_application`.
+Enable it with the same private `APPLICATION_WEB_SECRET` configured in Apps Script; the deployed
+Coastal form URL and private inbox ID are included as defaults.
+
 Player profiles and monthly check-ins are implemented as **disabled-by-default** features.
 See the [registry, historical import and check-in runbook](docs/player-registry.md) for the
 additive migration, inspected Season 3–10 sources, identity review commands, eligibility rules,

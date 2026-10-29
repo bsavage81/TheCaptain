@@ -19,6 +19,7 @@ from urllib.request import HTTPRedirectHandler, Request, build_opener
 ROOT = Path(__file__).resolve().parents[1]
 EXPECTED_SERVER = "5ff9cb52"
 GUIDE = "utils/coastal_guide/__cg_logic.py"
+WEB_PORTAL = "utils/coastal_applications/web_portal.py"
 LEGACY_REVISION = "1f9f85c95821830d2a95f4ccf2bafee2a443eed2"
 
 
@@ -155,6 +156,10 @@ async def console_signals(panel):
             "git_up_to_date_reported": "Already up to date" in text,
             "configuration_error": "Settings migration" in text or "migrations.botdata_settings" in text,
             "bot_ready_logged": "TheCaptain ready" in text,
+            "application_web_portal_enabled": "application_web_portal_enabled" in text,
+            "application_web_portal_inbox_ready": "application_web_portal_inbox_ready" in text,
+            "application_web_portal_disabled": "application_web_portal_disabled" in text,
+            "application_inbox_poll_failed": "application_inbox_poll_failed" in text,
             "ready_revisions": re.findall(r"The Captain Version:\s*([0-9a-f]{7,40})", text)[-5:],
             "guide_file_named_in_error": GUIDE in text and ("error:" in text or "fatal:" in text)}
 
@@ -200,6 +205,10 @@ def inspect(panel, configured_server):
         report["guide_matches_checkout"] = normalized_hash(guide) == normalized_hash((ROOT / GUIDE).read_text(encoding="utf-8"))
     else:
         report["guide_file_readable"] = False
+    if (ROOT / WEB_PORTAL).is_file():
+        portal = file_text(panel, WEB_PORTAL)
+        report["portal_source_matches_checkout"] = portal is not None and normalized_hash(portal) == normalized_hash(
+            (ROOT / WEB_PORTAL).read_text(encoding="utf-8"))
     head = file_text(panel, ".git/HEAD")
     if head:
         if re.fullmatch(r"[0-9a-f]{40}\s*", head):
@@ -244,7 +253,7 @@ def main():
             time.sleep(5)
             report = inspect(panel, configured)
             revisions = report.get("console_signals", {}).get("ready_revisions", [])
-            if report.get("guide_matches_checkout") and report.get("server_commit") == args.expected_revision and any(
+            if report.get("guide_matches_checkout") and report.get("portal_source_matches_checkout", True) and report.get("server_commit") == args.expected_revision and any(
                     args.expected_revision.startswith(revision) for revision in revisions):
                 print(json.dumps(dict(report, deployment_verified=True), indent=2))
                 return

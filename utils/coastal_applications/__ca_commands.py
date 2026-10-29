@@ -1,16 +1,32 @@
 from utils.core_features.__common import coastal_command_guilds
 from typing import Any
+import logging
 import discord
 from discord import app_commands
 from discord.ext import commands
 from utils.helpers.__checks import op_team
 from . import __ca_logic as logic
 from .__ca_views import CoastalApplicationStartView
+from .web_portal import WebPortal, portal_config, issue_ticket
 
 
 class CoastalAppCMD(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        self.web_portal = None
+
+    async def cog_load(self):
+        config = portal_config()
+        if config:
+            self.web_portal = WebPortal(self.bot, config)
+            self.web_portal.start()
+            logging.getLogger(__name__).info("application_web_portal_enabled")
+        else:
+            logging.getLogger(__name__).info("application_web_portal_disabled")
+
+    async def cog_unload(self):
+        if self.web_portal:
+            await self.web_portal.stop()
 
     @app_commands.command(
         name="applycoastal",
@@ -33,6 +49,17 @@ class CoastalAppCMD(commands.Cog):
             await interaction.response.send_message(
                 embed=noGoAway,
                 ephemeral=True,
+            )
+            return
+
+        if self.web_portal:
+            code = issue_ticket(interaction.user, self.web_portal.config.secret)
+            view = discord.ui.View()
+            view.add_item(discord.ui.Button(label="Open application form", url=self.web_portal.config.url))
+            await interaction.response.send_message(
+                "Open the form below, or use the form on our Google Site, and paste this private access code. "
+                "It expires in 24 hours. Keep it private.\n```\n" + code + "\n```",
+                view=view, ephemeral=True,
             )
             return
 

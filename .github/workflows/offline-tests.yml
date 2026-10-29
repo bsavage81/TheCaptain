@@ -22,3 +22,5 @@ jobs:
       - run: python -m compileall -q main.py utils migrations scripts tests
       - run: python -m ruff check --select F main.py utils migrations scripts tests
       - run: python -m pytest -q
+      - name: Test Apps Script submission and setup contracts offline
+        run: node --test apps_script/coastal_application/test-backend.cjs

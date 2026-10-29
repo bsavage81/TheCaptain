@@ -100,17 +100,17 @@ class SheetsService:
         await self._run(connect_once)
 
     @staticmethod
-    def _insert(sheet, row, position):
+    def _insert(sheet, row, position, *, raw=False):
         # Read all IDs rather than assuming the newest row holds the maximum.
         ids = [int(v) for v in sheet.col_values(1)[position - 1:] if str(v).strip().isdigit()]
         entry = max(ids, default=0) + 1
         row = list(row)
         row[0] = entry
-        sheet.insert_row(row, position, value_input_option="USER_ENTERED")
+        sheet.insert_row(row, position, value_input_option="RAW" if raw else "USER_ENTERED")
         return entry
 
-    async def submit_application(self, row):
-        entry = await self._run(lambda: self._insert(self.applications, row, 3))
+    async def submit_application(self, row, *, raw=False):
+        entry = await self._run(lambda: self._insert(self.applications, row, 3, raw=raw))
         saved = list(row)
         saved[0] = entry
         await self._capture_profile(saved, fresh_submission=True)

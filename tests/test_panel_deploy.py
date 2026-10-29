@@ -73,6 +73,8 @@ def main_fixture(monkeypatch, report):
     {"guide_matches_checkout": False, "server_commit": "b" * 40},
     {"guide_matches_checkout": True, "server_commit": REVISION, "console_signals": {"ready_revisions": ["bbbbbbb"]}},
     {"guide_matches_checkout": True, "server_commit": "b" * 40, "console_signals": {"ready_revisions": [REVISION[:7]]}},
+    {"guide_matches_checkout": True, "portal_source_matches_checkout": False,
+     "server_commit": REVISION, "console_signals": {"ready_revisions": [REVISION[:7]]}},
 ])
 def test_stale_source_or_old_ready_banner_fails_deployment(monkeypatch, capsys, report):
     client = main_fixture(monkeypatch, report)

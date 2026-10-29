@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <meta name="referrer" content="no-referrer">
+  <style>
+    :root{--ink:#173e40;--paper:#f7f1e5;--muted:#526362;--rust:#9a3d25;--line:#d7cbb4;--gold:#ecc377;color-scheme:light}
+    *{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.6 'Segoe UI',system-ui,sans-serif}
+    main{max-width:820px;margin:auto;padding:32px 24px 60px}.mast{display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line);padding-bottom:16px;gap:16px}.brand{font-weight:850;letter-spacing:2px;font-size:17px}.season,.kicker{font:700 11px/1.6 monospace;letter-spacing:2px;color:var(--rust)}h1{font-size:clamp(32px,6vw,50px);line-height:1.1;letter-spacing:-1.6px;margin:28px 0 18px}h2{font-size:24px;line-height:1.3;margin-top:0}.intro{color:var(--muted)}p{white-space:pre-wrap}.notice{padding:18px 20px;background:#eee4d2;border-left:3px solid var(--rust);margin:24px 0}.notice p:last-child{margin-bottom:0}.small{font-size:13px;color:var(--muted)}label{display:block;font-weight:650;margin:24px 0 8px}textarea,input{width:100%;font:inherit;color:var(--ink);background:#fffdf8;border:1px solid #a4aaa0;border-radius:4px;padding:12px;min-height:48px}textarea{min-height:110px;resize:vertical}button{font:inherit;min-height:46px;padding:10px 20px;cursor:pointer;border:1px solid var(--ink);border-radius:3px;background:var(--ink);color:var(--paper);font-weight:650}button:disabled{opacity:.55;cursor:wait}.secondary{background:transparent;color:var(--ink)}a{color:var(--rust);text-underline-offset:3px}:focus-visible{outline:3px solid #b65325;outline-offset:3px}.actions{display:flex;justify-content:space-between;gap:12px;margin-top:28px;flex-wrap:wrap}.steps{display:flex;gap:8px;margin:26px 0 10px}.steps span{height:5px;background:var(--line);flex:1}.steps .active{background:var(--ink)}.progress{font-size:13px;color:var(--muted);margin-bottom:26px}.count{font:12px monospace;color:var(--muted);text-align:right}.error{color:#8b251c;border-left:3px solid #8b251c;padding:12px;background:#fff2ea;margin:20px 0}.review{padding:16px 0;border-bottom:1px solid var(--line)}.review dt{font-weight:650}.review dd{margin:6px 0 0;white-space:pre-wrap;overflow-wrap:anywhere}.check{display:flex;gap:12px;align-items:flex-start;font-weight:400}.check input{width:22px;min-height:22px;flex:none;margin-top:3px}.success{border-top:4px solid #336f75;background:#e8eee6;padding:24px;margin-top:24px}[hidden]{display:none!important}footer{border-top:1px solid var(--line);margin-top:36px;padding-top:16px}.identity{overflow-wrap:anywhere}#ticket{min-height:80px;font:13px/1.5 monospace}@media(max-width:480px){main{padding:20px 16px 40px}.season{letter-spacing:1px}.brand{font-size:14px}.actions button{flex:1}h1{letter-spacing:-1px}}@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
+  </style>
+</head>
+<body>
+<main>
+  <header class="mast"><span class="brand">COASTAL CRAFT</span><span class="season">SEASON 10 · APPLY</span></header>
+  <h1 id="title">Your next chapter<br>starts on the coast.</h1>
+  <div id="loading" role="status">Loading application…</div>
+  <div id="error" class="error" role="alert" hidden></div>
+  <section id="welcome" hidden>
+    <p id="description" class="intro"></p>
+    <aside class="notice"><strong id="referenceTitle"></strong><p id="referenceDescription" class="small"></p></aside>
+    <div id="access">
+      <h2>Connect your application to Discord</h2>
+      <p>In the Coastal Craft channel on Minecraft Realm Portal, run <strong>/applycoastal</strong>. The Captain will give you a private access code. Paste it below to start.</p>
+      <p class="small">Need the community first? <a href="https://discord.gg/G47GmuJDwB" target="_blank" rel="noopener noreferrer">Open Discord</a>. Keep your code private; it expires after 24 hours.</p>
+      <label for="ticket">Your private access code</label><textarea id="ticket" autocomplete="off" spellcheck="false"></textarea>
+      <div class="actions"><button id="connect" type="button">Start application →</button></div>
+    </div>
+  </section>
+  <section id="application" hidden>
+    <p id="identity" class="small identity"></p>
+    <div class="steps" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
+    <p id="progress" class="progress" role="status"></p>
+    <form id="form">
+      <h2 id="sectionTitle" tabindex="-1"></h2>
+      <div id="questions"></div>
+      <div id="review" hidden></div>
+      <label id="confirmation" class="check" hidden><input id="confirm" type="checkbox">I have reviewed my answers and want to send this application to the Coastal Craft OP team.</label>
+      <div class="actions"><button id="back" type="button" class="secondary">← Back</button><button id="next" type="submit">Next →</button></div>
+    </form>
+    <p id="draft" class="small" role="status"></p>
+    <button id="clear" type="button" class="secondary">Clear saved draft</button>
+  </section>
+  <section id="receipt" class="success" hidden tabindex="-1"><h2 id="receiptTitle">Application received</h2><p id="receiptMessage" role="status"></p><p id="entryId"></p><p class="small" id="thanks"></p><button id="refresh" class="secondary" type="button">Check status</button></section>
+  <footer class="small">Coastal Craft · Your answers are shared with the OP team. Drafts stay in this browser until you clear them or your application is received. On shared devices, clear your draft before leaving.</footer>
+</main>
+<script>
+  'use strict';
+  const $ = id => document.getElementById(id);
+  let content, identity, ticket='', answers={}, page=0, busy=false, received=false;
+  function rpc(name,...args){return new Promise((resolve,reject)=>google.script.run.withSuccessHandler(resolve).withFailureHandler(reject)[name](...args));}
+  function error(e){$('error').textContent=e.message||String(e);$('error').hidden=false;}
+  function clearError(){$('error').hidden=true;}
+  function draftKey(){return 'coastal-application-v1:'+identity.uid;}
+  function saveDraft(){try{localStorage.setItem(draftKey(),JSON.stringify({version:content.version,answers}));$('draft').textContent='Draft saved in this browser.';}catch(e){$('draft').textContent='This browser cannot save drafts. Keep this page open until you submit.';}}
+  function collect(){document.querySelectorAll('[data-question]').forEach(el=>{answers[el.dataset.question]=el.value;});}
+  function showContent(c){content=c;$('title').textContent=c.title||'Apply to Coastal Craft';$('description').textContent=c.description;$('referenceTitle').textContent=c.referenceTitle;$('referenceDescription').textContent=c.referenceDescription;$('welcome').hidden=false;}
+  function showReceipt(r){received=true;$('application').hidden=true;$('welcome').hidden=true;$('receipt').hidden=false;$('receiptMessage').textContent=r.message;$('entryId').textContent=r.entryId?'Application #'+r.entryId:'Reference: '+r.requestId;$('receiptTitle').textContent=r.state==='complete'?(content.thanksTitle||'Application sent'):'Application received';$('thanks').textContent=content.thanksDescription;$('refresh').hidden=r.state==='complete';try{localStorage.removeItem(draftKey());}catch(e){}$('receipt').focus();}
+  function render(){
+    clearError();$('questions').replaceChildren();$('review').replaceChildren();
+    const reviewing=page===content.sections.length;
+    $('review').hidden=!reviewing;$('confirmation').hidden=!reviewing;$('confirm').checked=false;
+    $('back').disabled=page===0||busy;$('next').textContent=reviewing?'Send application':'Next →';
+    $('progress').textContent='Step '+(page+1)+' of 4 · '+(reviewing?'Review and send':content.sections[page].title);
+    document.querySelectorAll('.steps span').forEach((el,i)=>el.classList.toggle('active',i<=page));
+    $('sectionTitle').textContent=reviewing?'Take one last look':content.sections[page].title;
+    if(reviewing){
+      const dl=document.createElement('dl');
+      content.sections.flatMap(s=>s.questions).forEach(q=>{const wrap=document.createElement('div');wrap.className='review';const dt=document.createElement('dt');dt.textContent=q.label;const dd=document.createElement('dd');dd.textContent=answers[q.key]||'';wrap.append(dt,dd);dl.append(wrap);});$('review').append(dl);
+    }else content.sections[page].questions.forEach(q=>{
+      const label=document.createElement('label');label.htmlFor=q.key;label.textContent=q.label;
+      const input=document.createElement('textarea');input.id=q.key;input.dataset.question=q.key;input.required=true;input.minLength=q.min;input.maxLength=q.max;input.value=answers[q.key]||'';
+      const count=document.createElement('div');count.className='count';count.id=q.key+'-count';input.setAttribute('aria-describedby',count.id);
+      const update=()=>{count.textContent=input.value.length+' / '+q.max;};update();
+      input.addEventListener('input',()=>{input.setCustomValidity('');update();collect();saveDraft();});
+      $('questions').append(label,input,count);
+    });$('sectionTitle').focus();
+  }
+  function setBusy(value){busy=value;document.querySelectorAll('button').forEach(b=>b.disabled=value);if(!value)$('back').disabled=page===0;}
+  $('connect').addEventListener('click',async()=>{
+    clearError();setBusy(true);
+    try{
+      ticket=$('ticket').value.trim();const result=await rpc('getApplication',ticket);
+      if(result.closed)throw new Error(result.message);
+      if(!result.identity)throw new Error('Paste your access code from /applycoastal.');
+      showContent(result.content);identity=result.identity;$('identity').textContent='Applying as '+identity.nick+' (@'+identity.name+') · Discord ID '+identity.uid;
+      if(result.receipt){showReceipt(result.receipt);return;}
+      answers={};let changed=false;
+      try{const draft=JSON.parse(localStorage.getItem(draftKey())||'null');if(draft){answers=draft.answers||{};changed=draft.version!==content.version;}}catch(e){}
+      const allowed=new Set(content.sections.flatMap(s=>s.questions).map(q=>q.key));answers=Object.fromEntries(Object.entries(answers).filter(([key,value])=>allowed.has(key)&&typeof value==='string'));
+      $('access').hidden=true;$('application').hidden=false;page=0;render();saveDraft();if(changed)error(new Error('The questions changed since your saved draft. Please review every answer.'));
+    }catch(e){error(e);}finally{setBusy(false);}
+  });
+  $('form').addEventListener('submit',async event=>{
+    event.preventDefault();if(busy||received)return;clearError();collect();
+    for(const input of document.querySelectorAll('[data-question]')){input.setCustomValidity(input.value.trim().length<2?'Please enter at least 2 characters.':'');if(!input.reportValidity())return;}
+    saveDraft();if(page<content.sections.length){page++;render();return;}
+    if(!$('confirm').checked){error(new Error('Please confirm that you have reviewed your answers.'));return;}
+    setBusy(true);
+    try{const r=await rpc('submitApplication',{ticket,version:content.version,answers});showReceipt(r);}
+    catch(e){error(new Error((e.message||e)+' If the connection was interrupted, press Send again using the same code; it will check your existing submission.'));}
+    finally{setBusy(false);}
+  });
+  $('back').addEventListener('click',()=>{if(busy||page===0)return;collect();saveDraft();page--;render();});
+  $('clear').addEventListener('click',()=>{if(busy)return;if(!window.confirm('Clear the saved answers from this browser?'))return;answers={};try{localStorage.removeItem(draftKey());}catch(e){}page=0;render();$('draft').textContent='Saved draft cleared.';});
+  $('refresh').addEventListener('click',async()=>{setBusy(true);clearError();try{const r=await rpc('getReceipt',ticket);if(r)showReceipt(r);}catch(e){error(e);}finally{setBusy(false);}});
+  (async()=>{try{const result=await rpc('getApplication','');if(result.closed){$('loading').textContent=result.message;return;}showContent(result.content);$('loading').hidden=true;}catch(e){$('loading').hidden=true;error(e);}})();
+</script>
+</body>
+</html>
