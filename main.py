@@ -6,7 +6,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 from utils.core_features.__constants import EXTENSIONS, ROOT
-from utils.core_features.__common import load_settings
+from utils.configuration import load_bootstrap
 from utils.core_features.__special_methods import on_app_command_error_, on_command_error_, on_ready_
 from utils.database.__database import initialize_database, is_administrator
 from utils.integrations.__google_sheets import SheetsService
@@ -44,6 +44,8 @@ class TheCaptain(commands.Bot):
         for extension in EXTENSIONS:
             if extension not in self.extensions:
                 await self.load_extension(extension)
+        if self.settings.get("profiles_enabled") and "utils.players.cog" not in self.extensions:
+            await self.load_extension("utils.players.cog")
 
     async def on_ready(self):
         logging.getLogger(__name__).info("TheCaptain ready")
@@ -67,7 +69,7 @@ class TheCaptain(commands.Bot):
 def main():
     from dotenv import load_dotenv
     load_dotenv(ROOT / ".env")
-    settings = load_settings()
+    settings = load_bootstrap()
     if not settings.get("token"):
         raise ValueError("Configure token before startup")
     logging.basicConfig(level=logging.INFO)

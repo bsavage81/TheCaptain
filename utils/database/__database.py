@@ -13,7 +13,11 @@ class BaseModel(Model):
 
 
 class BotData(BaseModel):
-    """Production singleton. Retired settings live only in the migration archive."""
+    """Stable singleton fields; settings_json is managed by the configuration migration.
+
+    The explicit configuration loader reads that additive column separately, keeping
+    this model compatible with pre-consolidation schemas and historical migrations.
+    """
     id = AutoField()
     prefix = TextField(default=">")
     bot_id = BigIntegerField(default=0)
@@ -57,6 +61,9 @@ def initialize_database(settings, backend=None):
     with backend.connection_context():
         if set(tables) - set(backend.get_tables()):
             raise ValueError("Captain database tables are missing. Review and run python -m migrations.single_production --apply explicitly before startup.")
+        if settings.get("configuration_source") == "database":
+            from utils.configuration import read_database_settings
+            settings.update(read_database_settings(backend))
         row = ensure_production_row()
         if not Administrators.select().exists():
             for owner in settings.get("owner_ids", [306070011028439041]):
