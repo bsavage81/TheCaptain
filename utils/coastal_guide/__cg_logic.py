@@ -65,12 +65,12 @@ async def post_guide_announcement(bot, interaction):
         return
     command_channel = f"<#{bot.settings['CoastalMRP']}>"
     message = (
-        "@everyone, Ahoy there mateys! After many months on the harsh seas, "
+        "@everyone, Ahoy there mateys! After much time on the harsh seas, "
         "we have finally found a welcoming shore: **" + REALM_NAME + "**! "
-        "Before stepping onto these new lands, every sailor must read and agree to the Season 10 guide. "
+        "Before stepping onto these new lands, every sailor must read and agree to the Season 10 guide, and fill out the Coastal Application */applycoastal*. "
         "Take your time, as there are new and amended rules to learn!\n\n"
         f"Please head to {command_channel} and use **/guide**.\n\n"
-        "The Captain will DM you the guide, ask you a question, and then ask whether you agree to the rules. "
+        "I will DM you the guide, ask you a question, and then ask whether you agree to the rules. "
         "Answer correctly and agree to the guide to receive your Season 10 guide and active player roles. "
         "Make sure your DMs are open!\n\n"
         "The full guide can also be found here:\n\n"
