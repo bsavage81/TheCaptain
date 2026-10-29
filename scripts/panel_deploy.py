@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 import re
 import sys
+import time
 from urllib.error import HTTPError
 from urllib.parse import quote, urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
@@ -46,6 +47,18 @@ class Panel:
             with self.opener.open(request, timeout=30) as response:
                 value = response.read(2_000_000)
                 return value.decode("utf-8") if raw else json.loads(value)
+        except HTTPError as error:
+            raise PanelError(error.code) from None
+
+    def restart(self):
+        request = Request(self.url + f"/servers/{EXPECTED_SERVER}/power", method="POST",
+            data=json.dumps({"signal": "restart"}).encode(), headers={
+                "Authorization": "Bearer " + self.key, "Accept": "application/json",
+                "Content-Type": "application/json"})
+        try:
+            with self.opener.open(request, timeout=30) as response:
+                if response.status != 204:
+                    raise PanelError(response.status)
         except HTTPError as error:
             raise PanelError(error.code) from None
 
@@ -88,7 +101,7 @@ async def console_signals(panel):
                     await ws.send_json({"event": "send logs", "args": [None]})
                 if payload.get("event") == "console output":
                     output.extend(str(value) for value in payload.get("args", []))
-    text = "\n".join(output)
+    text = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", "\n".join(output))
     return {"logs_received": bool(output),
             "git_local_changes_block_pull": "would be overwritten by merge" in text,
             "git_divergent_branches": "divergent branches" in text,
@@ -98,6 +111,7 @@ async def console_signals(panel):
             "git_up_to_date_reported": "Already up to date" in text,
             "configuration_error": "Settings migration" in text or "migrations.botdata_settings" in text,
             "bot_ready_logged": "TheCaptain ready" in text,
+            "ready_revisions": re.findall(r"The Captain Version:\s*([0-9a-f]{7,40})", text)[-5:],
             "guide_file_named_in_error": GUIDE in text and ("error:" in text or "fatal:" in text)}
 
 
@@ -162,10 +176,34 @@ def inspect(panel, configured_server):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--inspect-only", action="store_true", required=True)
-    parser.parse_args()
+    mode = parser.add_mutually_exclusive_group(required=True)
+    mode.add_argument("--inspect-only", action="store_true")
+    mode.add_argument("--restart-and-verify", action="store_true")
+    parser.add_argument("--expected-revision")
+    args = parser.parse_args()
     panel = Panel(os.environ["PANEL_URL"], os.environ["PANEL_API_KEY"])
-    print(json.dumps(inspect(panel, os.environ.get("PANEL_SERVER_ID", "")), indent=2))
+    configured = os.environ.get("PANEL_SERVER_ID", "").strip()
+    if args.restart_and_verify:
+        if not configured.startswith(EXPECTED_SERVER) or not re.fullmatch(r"[0-9a-f]{40}", args.expected_revision or ""):
+            raise ValueError("Explicit expected Captain server and revision required")
+        # Verify ownership/identifier before performing the pre-authorized restart.
+        if panel.get(f"/servers/{EXPECTED_SERVER}")["attributes"].get("identifier") != EXPECTED_SERVER:
+            raise ValueError("Server identifier mismatch")
+        panel.restart()
+        print(json.dumps({"restart_accepted": True}), flush=True)
+        deadline = time.monotonic() + 180
+        report = {}
+        while time.monotonic() < deadline:
+            time.sleep(5)
+            report = inspect(panel, configured)
+            revisions = report.get("console_signals", {}).get("ready_revisions", [])
+            if report.get("guide_matches_checkout") and report.get("server_commit") == args.expected_revision and any(
+                    args.expected_revision.startswith(revision) for revision in revisions):
+                print(json.dumps(dict(report, deployment_verified=True), indent=2))
+                return
+        print(json.dumps(dict(report, deployment_verified=False), indent=2))
+        raise ValueError("Server did not load the expected source and ready revision")
+    print(json.dumps(inspect(panel, configured), indent=2))
 
 
 if __name__ == "__main__":
