@@ -21,7 +21,7 @@ require explicit owner/administrator approval before use. Startup never creates 
 OP Team members can use `/post` to write a multiline message as The Captain. Choose an
 optional destination text channel, or post in the current channel. The command requires
 both the author and bot to have access to send there. Confirmation is private; mentions
-in the post do not notify users, roles, or everyone. After deployment, use the existing
+in the post can notify users, roles, and everyone, subject to Discord permissions. After deployment, use the existing
 administrator `%sync all` command to register the new slash command.
 
 Tested runtime: CPython 3.12.14. CI runs on Python 3.12 on Windows and Linux.

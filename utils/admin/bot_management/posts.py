@@ -37,7 +37,7 @@ class PostModal(discord.ui.Modal, title="Post as The Captain"):
             return
         await interaction.response.defer(ephemeral=True, thinking=True)
         try:
-            message = await self.channel.send(content, allowed_mentions=discord.AllowedMentions.none())
+            message = await self.channel.send(content, allowed_mentions=discord.AllowedMentions.all())
         except discord.HTTPException:
             await interaction.followup.send(
                 "Discord did not confirm the post. Check the destination before trying again.", ephemeral=True)

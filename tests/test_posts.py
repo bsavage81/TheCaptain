@@ -19,14 +19,14 @@ def context():
 
 
 @pytest.mark.asyncio
-async def test_post_is_plain_bot_message_with_no_notifications():
+async def test_post_allows_user_role_and_everyone_notifications():
     interaction, channel = context()
     modal = PostModal(1, channel)
     modal.content._value = "Hello **crew**!\n@everyone"
     await modal.on_submit(interaction)
     args, kwargs = channel.send.call_args
     assert args == ("Hello **crew**!\n@everyone",)
-    assert kwargs["allowed_mentions"].to_dict() == discord.AllowedMentions.none().to_dict()
+    assert kwargs["allowed_mentions"].to_dict() == discord.AllowedMentions.all().to_dict()
     interaction.followup.send.assert_awaited_once_with("Posted: https://discord.com/test", ephemeral=True)
 
 
