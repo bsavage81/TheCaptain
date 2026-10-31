@@ -107,10 +107,10 @@ async def test_registration_exactly_once():
     await bot.setup_hook()
     await bot.setup_hook()
     assert len(bot.extensions) == 6
-    assert len(bot.cogs) == 6  # jishaku plus five Captain cogs
+    assert len(bot.cogs) == 7  # jishaku plus six Captain cogs
     names = lambda guild: sorted(c.name for c in bot.tree.get_commands(guild=discord.Object(guild)))
     assert names(101) == ["applycoastal"]
-    expected = ["addpoi_end", "addpoi_end_returngateway", "addpoi_endcity_claim", "addpoi_nether", "addpoi_overworld", "approveapp", "denyapp", "guide", "guide-announcement"]
+    expected = ["addpoi_end", "addpoi_end_returngateway", "addpoi_endcity_claim", "addpoi_nether", "addpoi_overworld", "approveapp", "denyapp", "guide", "guide-announcement", "post"]
     assert names(102) == sorted(expected)
     assert names(103) == sorted(expected + ["applycoastal"])
     assert [c.name for c in bot.tree.get_commands()] == ["repeat"]

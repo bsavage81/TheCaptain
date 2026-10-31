@@ -11,11 +11,13 @@ async def predicate_LV3(ctx):
 is_botAdmin3 = commands.check(predicate_LV3)
 
 
+async def require_op_team(interaction):
+    role = interaction.client.settings.get("OPTeamRole", "OP Team")
+    roles = getattr(interaction.user, "roles", [])
+    if not any((r.id == role if isinstance(role, int) else r.name == role) for r in roles):
+        raise app_commands.MissingRole(role)
+    return True
+
+
 def op_team():
-    async def predicate(interaction):
-        role = interaction.client.settings.get("OPTeamRole", "OP Team")
-        roles = getattr(interaction.user, "roles", [])
-        if not any((r.id == role if isinstance(role, int) else r.name == role) for r in roles):
-            raise app_commands.MissingRole(role)
-        return True
-    return app_commands.check(predicate)
+    return app_commands.check(require_op_team)
