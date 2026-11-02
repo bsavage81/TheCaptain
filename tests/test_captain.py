@@ -296,11 +296,16 @@ async def test_actual_poi_rows(method, dimension, answers, monkeypatch):
     bot = NS(settings=settings(), sheets=s, get_guild=Mock(return_value=guild), wait_for=wait_for,
              poi_content=NS(**{n:n for n in ["poidesc","Qtext1","Qtext2","Qtext3","Qtextcolor","Qmarkertype"]}))
     i = interaction(); i.user=user; i.channel=channel
+    s.markers[dimension].rows[0] = [""] * 14 + ["category"]
     await logic.run_poi(NS(bot=bot),i,12,-34,getattr(logic,method))
     row,position,options = s.markers[dimension].inserts[0]
     assert row[:6] == [1,12,-34,"-1","",""]
     assert row[10:13] == ["#ffffff","0","0"]
-    assert len(row)==14 and position==2
+    assert len(row)==15 and position==2
+    expected_category = {"addpoi_overworld": "Shops", "addpoi_nether": "Portals",
+                         "addpoi_end": "Player Bases", "addpoi_endcity_claim": "Community",
+                         "addpoi_end_returngateway": "Portals"}[method]
+    assert row[14] == expected_category
     if method.endswith("claim"):
         assert row[6:10] == ["\uf06a","Synthetic","","green"]
     elif method.endswith("returngateway"):

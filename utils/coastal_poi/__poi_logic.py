@@ -2,6 +2,29 @@ import asyncio
 import discord
 
 
+MARKER_TYPES = {
+    "base": ("Player Bases", 8),
+    "shop": ("Shops", 10),
+    "portal": ("Portals", 12),
+    "community": ("Community", 10),
+}
+MARKER_TYPE_QUESTION = (
+    "What type of marker should I create? Enter base (Player Bases), shop (Shops), "
+    "portal (Portals), or community (Community)."
+)
+
+
+async def ask_marker_type(bot, channel, author):
+    await channel.send(MARKER_TYPE_QUESTION)
+    while True:
+        answer = await wait_answer(bot, channel, author)
+        marker_type = answer.content.strip().casefold()
+        if marker_type in MARKER_TYPES:
+            category, size = MARKER_TYPES[marker_type]
+            return answer, category, f"900 {size}px 'Font Awesome 6 Free'"
+        await channel.send("Unrecognized marker type. " + MARKER_TYPE_QUESTION)
+
+
 async def wait_answer(bot, channel, author):
     def check(message):
         return message.content is not None and message.channel == channel and message.author == author
@@ -33,14 +56,15 @@ async def addpoi_end_returngateway(self, interaction, x_coord, z_coord):
     # Spreadsheet Data
       
     font = "900 10px 'Font Awesome 6 Free'"
+    category = "Portals"
     row = [
         entryID, x_coord, z_coord, "-1", "", "", "\uf52b",
         "Return Portal", "", "red", "#ffffff", "0", "0",
-        font
+        font, category
     ]
     entryID = await self.bot.sheets.submit_poi(dimension, row)
 
-    await channel.send("Success!")
+    await channel.send(f"Success! Category: {category}")
 
     # Actual Embed with Responses
     embed1 = discord.Embed(
@@ -54,6 +78,7 @@ async def addpoi_end_returngateway(self, interaction, x_coord, z_coord):
     )
     embed1.add_field(name="X_Coord", value=str(x_coord), inline=True)
     embed1.add_field(name="Z_Coord", value=str(z_coord), inline=True)
+    embed1.add_field(name="Category", value=category, inline=True)
     embed1.add_field(name="Marker Type",
                      value=str("End Return Gateway"),
                      inline=True)
@@ -103,14 +128,15 @@ async def addpoi_endcity_claim(self, interaction, x_coord, z_coord):
     # Spreadsheet Data
       
     font = "900 10px 'Font Awesome 6 Free'"
+    category = "Community"
     row = [
         entryID, x_coord, z_coord, "-1", "", "", "\uf06a",
         answer1.content, "", answer2.content, "#ffffff", "0", "0",
-        font
+        font, category
     ]
     entryID = await self.bot.sheets.submit_poi(dimension, row)
 
-    await channel.send("Success!")
+    await channel.send(f"Success! Category: {category}")
 
     # Actual Embed with Responses
     embed1 = discord.Embed(
@@ -124,6 +150,7 @@ async def addpoi_endcity_claim(self, interaction, x_coord, z_coord):
     )
     embed1.add_field(name="X_Coord", value=str(x_coord), inline=True)
     embed1.add_field(name="Z_Coord", value=str(z_coord), inline=True)
+    embed1.add_field(name="Category", value=category, inline=True)
     embed1.add_field(name="Marker Type",
                      value=str("End City Claim"),
                      inline=True)
@@ -178,8 +205,7 @@ async def addpoi_end(self, interaction, x_coord, z_coord):
     answer4 = await wait_answer(self.bot, channel, author)
     await asyncio.sleep(.5)
 
-    await channel.send(self.bot.poi_content.Qmarkertype)
-    answer5 = await wait_answer(self.bot, channel, author)
+    answer5, category, font = await ask_marker_type(self.bot, channel, author)
     await asyncio.sleep(.5)
     
     # Spreadsheet Data
@@ -193,23 +219,14 @@ async def addpoi_end(self, interaction, x_coord, z_coord):
     else:
         text3content = answer3.content
 
-    if answer5.content == "base" or answer5.content == "Base":
-        font = "900 8px 'Font Awesome 6 Free'"
-    elif answer5.content == "shop" or answer5.content == "Shop":
-        font = "900 10px 'Font Awesome 6 Free'"
-    elif answer5.content == "portal" or answer5.content == "Portal":
-        font = "900 12px 'Font Awesome 6 Free'"
-    else:
-        font = "900 8px 'Font Awesome 6 Free'"
-
     row = [
         entryID, x_coord, z_coord, "-1", "", "", answer1.content,
         text2content, text3content, answer4.content, "#ffffff", "0", "0",
-        font
+        font, category
     ]
     entryID = await self.bot.sheets.submit_poi(dimension, row)
 
-    await channel.send("Success!")
+    await channel.send(f"Success! Category: {category}")
 
     # Actual Embed with Responses
     embed1 = discord.Embed(
@@ -223,6 +240,7 @@ async def addpoi_end(self, interaction, x_coord, z_coord):
     )
     embed1.add_field(name="X_Coord", value=str(x_coord), inline=True)
     embed1.add_field(name="Z_Coord", value=str(z_coord), inline=True)
+    embed1.add_field(name="Category", value=category, inline=True)
     embed1.add_field(name="Marker Type",
                      value=str(answer5.content),
                      inline=True)
@@ -280,8 +298,7 @@ async def addpoi_nether(self, interaction, x_coord, z_coord):
     answer4 = await wait_answer(self.bot, channel, author)
     await asyncio.sleep(.5)
 
-    await channel.send(self.bot.poi_content.Qmarkertype)
-    answer5 = await wait_answer(self.bot, channel, author)
+    answer5, category, font = await ask_marker_type(self.bot, channel, author)
     await asyncio.sleep(.5)
     # Spreadsheet Data
     if answer2.content == "no" or answer2.content == "No":
@@ -294,23 +311,14 @@ async def addpoi_nether(self, interaction, x_coord, z_coord):
     else:
         text3content = answer3.content
 
-    if answer5.content == "base" or answer5.content == "Base":
-        font = "900 8px 'Font Awesome 6 Free'"
-    elif answer5.content == "shop" or answer5.content == "Shop":
-        font = "900 10px 'Font Awesome 6 Free'"
-    elif answer5.content == "portal" or answer5.content == "Portal":
-        font = "900 12px 'Font Awesome 6 Free'"
-    else:
-        font = "900 8px 'Font Awesome 6 Free'"
-
     row = [
         entryID, x_coord, z_coord, "-1", "", "", answer1.content,
         text2content, text3content, answer4.content, "#ffffff", "0", "0",
-        font
+        font, category
     ]
     entryID = await self.bot.sheets.submit_poi(dimension, row)
 
-    await channel.send("Success!")
+    await channel.send(f"Success! Category: {category}")
 
     # Actual Embed with Responses
     embed1 = discord.Embed(
@@ -324,6 +332,7 @@ async def addpoi_nether(self, interaction, x_coord, z_coord):
     )
     embed1.add_field(name="X_Coord", value=str(x_coord), inline=True)
     embed1.add_field(name="Z_Coord", value=str(z_coord), inline=True)
+    embed1.add_field(name="Category", value=category, inline=True)
     embed1.add_field(name="Marker Type",
                      value=str(answer5.content),
                      inline=True)
@@ -381,8 +390,7 @@ async def addpoi_overworld(self, interaction, x_coord, z_coord):
     answer4 = await wait_answer(self.bot, channel, author)
     await asyncio.sleep(.5)
 
-    await channel.send(self.bot.poi_content.Qmarkertype)
-    answer5 = await wait_answer(self.bot, channel, author)
+    answer5, category, font = await ask_marker_type(self.bot, channel, author)
     await asyncio.sleep(.5)
     # Spreadsheet Data
     if answer2.content == "no" or answer2.content == "No":
@@ -395,23 +403,14 @@ async def addpoi_overworld(self, interaction, x_coord, z_coord):
     else:
         text3content = answer3.content
 
-    if answer5.content == "base" or answer5.content == "Base":
-        font = "900 8px 'Font Awesome 6 Free'"
-    elif answer5.content == "shop" or answer5.content == "Shop":
-        font = "900 10px 'Font Awesome 6 Free'"
-    elif answer5.content == "portal" or answer5.content == "Portal":
-        font = "900 12px 'Font Awesome 6 Free'"
-    else:
-        font = "900 8px 'Font Awesome 6 Free'"
-
     row = [
         entryID, x_coord, z_coord, "-1", "", "", answer1.content,
         text2content, text3content, answer4.content, "#ffffff", "0", "0",
-        font
+        font, category
     ]
     entryID = await self.bot.sheets.submit_poi(dimension, row)
 
-    await channel.send("Success!")
+    await channel.send(f"Success! Category: {category}")
 
     # Actual Embed with Responses
     embed1 = discord.Embed(
@@ -425,6 +424,7 @@ async def addpoi_overworld(self, interaction, x_coord, z_coord):
     )
     embed1.add_field(name="X_Coord", value=str(x_coord), inline=True)
     embed1.add_field(name="Z_Coord", value=str(z_coord), inline=True)
+    embed1.add_field(name="Category", value=category, inline=True)
     embed1.add_field(name="Marker Type",
                      value=str(answer5.content),
                      inline=True)

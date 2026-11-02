@@ -139,7 +139,14 @@ class SheetsService:
             logging.getLogger(__name__).warning("live_profile_capture_failed error=%s; reconcile_current_sheet=true", type(error).__name__)
 
     async def submit_poi(self, dimension, row):
-        return await self._run(lambda: self._insert(self.markers[dimension], row, 2))
+        def insert():
+            sheet = self.markers[dimension]
+            if len(row) == 15:
+                headers = sheet.row_values(1)
+                if len(headers) < 15 or headers[14] != "category":
+                    raise ValueError("Prepare the marker category header in column O before posting markers")
+            return self._insert(sheet, row, 2)
+        return await self._run(insert)
 
     def _find_row(self, appnumber):
         # Row 1 metadata and row 2 questions are never applicants.
