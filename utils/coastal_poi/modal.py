@@ -28,8 +28,8 @@ class POIModal(discord.ui.Modal):
         for field in (self.text1, self.text2, self.text3, self.color):
             self.add_item(field)
         self.radius = None
-        if marker_type == "base":
-            self.radius = discord.ui.TextInput(label="Base radius in blocks (optional)", required=False,
+        if marker_type in {"base", "community"}:
+            self.radius = discord.ui.TextInput(label="Border radius in blocks (optional)", required=False,
                 max_length=10, placeholder="Distance from X/Z center to border; blank or 0 = no border")
             self.add_item(self.radius)
 
@@ -56,7 +56,7 @@ class POIModal(discord.ui.Modal):
             value = self.radius.value.strip()
             if value and not re.fullmatch(r"[0-9]+", value):
                 await interaction.response.send_message(
-                    "Base radius must be a whole number of blocks, 0, or blank. Open a new form.", ephemeral=True)
+                    "Border radius must be a whole number of blocks, 0, or blank. Open a new form.", ephemeral=True)
                 return
             radius = int(value) if value else ""
         self.submitted = True
@@ -81,7 +81,7 @@ class POIModal(discord.ui.Modal):
                                 ("Text line 3", row[8]), ("Text color", color)):
                 embed.add_field(name=name, value=str(value) or "—", inline=False)
             if self.radius is not None:
-                embed.add_field(name="Base radius", value=f"{radius} blocks" if radius else "No border", inline=False)
+                embed.add_field(name="Border radius", value=f"{radius} blocks" if radius else "No border", inline=False)
             await channel.send(content=role.mention, embed=embed,
                                allowed_mentions=discord.AllowedMentions(roles=[role], users=False, everyone=False))
         except Exception as error:
@@ -89,7 +89,7 @@ class POIModal(discord.ui.Modal):
             log.warning("poi_modal_notification_failed entry=%s error=%s", entry_id, type(error).__name__)
         message = f"Marker #{entry_id} saved in {self.dimension} at X {self.x}, Z {self.z}. Category: {self.category}."
         if self.radius is not None:
-            message += f" Base radius: {radius} blocks." if radius else " No border radius set."
+            message += f" Border radius: {radius} blocks." if radius else " No border radius set."
         if notification_failed:
             message += " Staff notification failed; your marker is saved. Please do not resubmit."
         await interaction.followup.send(message, ephemeral=True, allowed_mentions=discord.AllowedMentions.none())
@@ -103,6 +103,7 @@ class EndCityClaimModal(POIModal):
         super().__init__(bot, author_id, "End", x, z, "community")
         self.title = "Claim a raided End city"
         self.clear_items()
+        self.radius = None
         self.text1 = discord.ui.TextInput(label="Gamertag", max_length=200,
                                          placeholder="Who raided this End city?")
         self.add_item(self.text1)

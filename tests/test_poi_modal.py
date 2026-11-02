@@ -22,7 +22,7 @@ def context():
 async def test_modal_saves_exact_row_and_private_confirmation(dimension, kind, category, size):
     bot, interaction, notification = context()
     modal = POIModal(bot, 9, dimension, 12, -34, kind)
-    assert len(modal.children) == (5 if kind == "base" else 4)
+    assert len(modal.children) == (5 if kind in {"base", "community"} else 4)
     modal.text1._value = " First "
     modal.text2._value = " NO "
     modal.text3._value = " Third "
@@ -48,23 +48,25 @@ async def test_modal_link_and_command_parameters_are_passed_through():
 
 
 @pytest.mark.parametrize("dimension", ["Overworld", "Nether", "End"])
+@pytest.mark.parametrize("kind,category", [("base", "Player Bases"), ("community", "Community")])
 @pytest.mark.parametrize("value,expected", [("", ""), ("0", 0), (" 150 ", 150), ("00025", 25)])
-async def test_base_radius_is_numeric_and_in_column_p(dimension, value, expected):
+async def test_border_radius_is_numeric_and_in_column_p(dimension, kind, category, value, expected):
     bot, interaction, notification = context()
-    modal = POIModal(bot, 9, dimension, 12, -34, "base")
+    modal = POIModal(bot, 9, dimension, 12, -34, kind)
     modal.text1._value = "Base"
     modal.color._value = "white"
     modal.radius._value = value
     await modal.on_submit(interaction)
     row = bot.sheets.submit_poi.call_args.args[1]
-    assert len(row) == 16 and row[14:] == ["Player Bases", expected]
-    assert any(f.name == "Base radius" for f in notification.send.call_args.kwargs["embed"].fields)
+    assert len(row) == 16 and row[14:] == [category, expected]
+    assert any(f.name == "Border radius" for f in notification.send.call_args.kwargs["embed"].fields)
 
 
+@pytest.mark.parametrize("kind", ["base", "community"])
 @pytest.mark.parametrize("value", ["-1", "1.5", "nan", "infinity", "100 blocks", "1e3", "+10"])
-async def test_invalid_radius_never_saves(value):
+async def test_invalid_radius_never_saves(kind, value):
     bot, interaction, notification = context()
-    modal = POIModal(bot, 9, "Overworld", 1, 2, "base")
+    modal = POIModal(bot, 9, "Overworld", 1, 2, kind)
     modal.text1._value = "Base"
     modal.color._value = "white"
     modal.radius._value = value

@@ -11,17 +11,17 @@ fixed claim icon, gamertag position, 10px font, and Community category are retai
 It has no radius field. `/addpoi_end_returngateway` still saves immediately from
 X/Z because its icon, text, color, font, and category are fixed.
 
-Player base forms additionally have an optional radius field. Column P (`radius`)
+Player base and community marker forms additionally have an optional radius field. Column P (`radius`)
 stores a whole number of blocks from the marker's X/Z center to its border, in that
 dimension's own coordinates (no Nether coordinate scaling). Blank or 0 means no
 border. Negative, fractional, or nonnumeric radii are rejected before saving.
-Other categories leave P blank. A:O retain their existing meanings. No existing
+Shop and portal markers leave P blank. A:O retain their existing meanings. No existing
 markers are backfilled. Standard modal submissions contain 16 values; legacy special
 End markers may still contain 15, leaving P empty.
 
 Prepare/verify the radius headers with `python scripts/prepare_marker_categories.py --radius`
 and add `--apply` to make missing-header changes. The web map can implement its future
-border toggle by drawing a circle centered on X/Z for `category == "Player Bases"`
+border toggle by drawing a circle centered on X/Z for `category` equal to `Player Bases` or `Community`
 with a finite numeric `radius > 0`; skip missing, zero, or invalid radii. This repository
 does not contain the map renderer, so no border toggle is implemented here.
 
