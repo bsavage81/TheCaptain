@@ -141,10 +141,12 @@ class SheetsService:
     async def submit_poi(self, dimension, row):
         def insert():
             sheet = self.markers[dimension]
-            if len(row) == 15:
+            if len(row) >= 15:
                 headers = sheet.row_values(1)
                 if len(headers) < 15 or headers[14] != "category":
                     raise ValueError("Prepare the marker category header in column O before posting markers")
+                if len(row) == 16 and (len(headers) < 16 or headers[15] != "radius"):
+                    raise ValueError("Prepare the marker radius header in column P before posting markers")
             return self._insert(sheet, row, 2)
         return await self._run(insert)
 

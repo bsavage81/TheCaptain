@@ -56,6 +56,20 @@ async def test_missing_category_header_prevents_insert():
     assert not sheets.markers["Nether"].inserts
 
 
+async def test_radius_header_required_and_exact_16_column_insert():
+    sheets = service()
+    sheet = sheets.markers["Overworld"]
+    sheet.rows[0] = HEADERS + ["category"]
+    row = [None, 10, -20, "-1", "", "", "Base", "", "", "blue", "#ffffff", "0", "0",
+           "900 8px 'Font Awesome 6 Free'", "Player Bases", 150]
+    with pytest.raises(ValueError, match="radius header"):
+        await sheets.submit_poi("Overworld", row)
+    assert not sheet.inserts
+    sheet.rows[0].append("radius")
+    await sheets.submit_poi("Overworld", row)
+    assert sheet.inserts == [([1] + row[1:], 2, {"value_input_option": "USER_ENTERED"})]
+
+
 def book_fixture():
     sheets = {}
     for name in ("Overworld", "Nether", "End", "Questions"):
@@ -92,5 +106,21 @@ def test_schema_preparation_preflights_every_target_before_writing(problem):
         sheets["End"].row_values.return_value = ["wrong"] * 14
     with pytest.raises(ValueError):
         prepare_categories(book, apply=True)
+    for sheet in sheets.values():
+        sheet.update_acell.assert_not_called()
+
+
+def test_radius_schema_preparation_only_adds_missing_headers():
+    book, sheets = book_fixture()
+    for sheet in sheets.values():
+        sheet.acell = lambda cell: NS(value=logic.MARKER_TYPE_QUESTION)
+    sheets["Overworld"].row_values.return_value = HEADERS + ["category", "radius"]
+    sheets["Nether"].row_values.return_value = HEADERS + ["category"]
+    sheets["End"].row_values.return_value = HEADERS + ["category"]
+    assert [(c["sheet"], c["cell"]) for c in prepare_categories(book, include_radius=True)] == [
+        ("Nether", "P1"), ("End", "P1")]
+    sheets["End"].row_values.return_value = HEADERS + ["category", "unrelated"]
+    with pytest.raises(ValueError, match="column P"):
+        prepare_categories(book, apply=True, include_radius=True)
     for sheet in sheets.values():
         sheet.update_acell.assert_not_called()

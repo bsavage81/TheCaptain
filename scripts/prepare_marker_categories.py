@@ -16,7 +16,7 @@ HEADERS = ["entryid", "x", "z", "minmapzoom", "image", "imageAnchor", "text1", "
 SEASON10_ID = "11xN9e9hXOsj0oBlrVYHxPFEJJoWAzfBPRR-5bOk4Hy8"
 
 
-def prepare_categories(book, *, apply=False):
+def prepare_categories(book, *, apply=False, include_radius=False):
     if book.id != SEASON10_ID:
         raise ValueError("Expected Season 10 marker spreadsheet")
     changes = []
@@ -28,6 +28,11 @@ def prepare_categories(book, *, apply=False):
             raise ValueError(f"Unexpected {name} marker schema")
         if len(headers) < 15 or headers[14] != "category":
             changes.append((sheet, "O1", "category"))
+        if include_radius:
+            if len(headers) > 15 and headers[15] not in ("", "radius"):
+                raise ValueError(f"Unexpected {name} column P")
+            if len(headers) < 16 or headers[15] != "radius":
+                changes.append((sheet, "P1", "radius"))
     questions = book.worksheet("Questions")
     if questions.acell("B6").value != MARKER_TYPE_QUESTION:
         changes.append((questions, "B6", MARKER_TYPE_QUESTION))
@@ -47,6 +52,7 @@ async def main():
 
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--apply", action="store_true")
+    parser.add_argument("--radius", action="store_true", help="Also prepare radius in column P for all dimensions")
     args = parser.parse_args()
     load_dotenv(ROOT / ".env")
     bootstrap = load_bootstrap()
@@ -57,7 +63,7 @@ async def main():
     await service.initialize()
     def prepare():
         book = service._open(service.client, settings, "markers")
-        return prepare_categories(book, apply=args.apply)
+        return prepare_categories(book, apply=args.apply, include_radius=args.radius)
     changes = await service._run(prepare)
     print(json.dumps({"applied": args.apply, "changes": changes}, indent=2))
 

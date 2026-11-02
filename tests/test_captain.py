@@ -117,7 +117,11 @@ async def test_registration_exactly_once():
     assert bot.get_command("sync") is not None
     for cmd in bot.tree.get_commands(guild=discord.Object(103)):
         if cmd.name.startswith("addpoi"):
-            assert [p.name for p in cmd.parameters] == ["x_coord", "z_coord"]
+            expected_parameters = ["x_coord", "z_coord"]
+            if cmd.name in {"addpoi_overworld", "addpoi_nether", "addpoi_end"}:
+                expected_parameters.append("marker_type")
+                assert [choice.value for choice in cmd.parameters[-1].choices] == ["base", "shop", "portal", "community"]
+            assert [p.name for p in cmd.parameters] == expected_parameters
     await bot.close()
 
 

@@ -4,6 +4,10 @@ from discord import app_commands
 from discord.ext import commands
 from . import __poi_logic as logic
 from .__poi_logic import run_poi
+from .modal import EndCityClaimModal, open_poi_modal
+from typing import Literal
+
+MarkerType = Literal["base", "shop", "portal", "community"]
 
 
 class CoastalPOICMD(commands.Cog):
@@ -12,24 +16,31 @@ class CoastalPOICMD(commands.Cog):
 
     @app_commands.command(name="addpoi_overworld",
                    description="Add a POI to the Overworld!")
-    async def addpoi_overworld(self, interaction: discord.Interaction, x_coord: int, z_coord: int):
-        await run_poi(self, interaction, x_coord, z_coord, logic.addpoi_overworld)
+    @app_commands.guild_only()
+    @app_commands.describe(marker_type="Choose base, shop, portal, or community.")
+    async def addpoi_overworld(self, interaction: discord.Interaction, x_coord: int, z_coord: int, marker_type: MarkerType):
+        await open_poi_modal(self.bot, interaction, "Overworld", x_coord, z_coord, marker_type)
 
     @app_commands.command(name="addpoi_nether",
                    description="Add a POI to the Nether!")
-    async def addpoi_nether(self, interaction: discord.Interaction, x_coord: int, z_coord: int):
-        await run_poi(self, interaction, x_coord, z_coord, logic.addpoi_nether)
+    @app_commands.guild_only()
+    @app_commands.describe(marker_type="Choose base, shop, portal, or community.")
+    async def addpoi_nether(self, interaction: discord.Interaction, x_coord: int, z_coord: int, marker_type: MarkerType):
+        await open_poi_modal(self.bot, interaction, "Nether", x_coord, z_coord, marker_type)
 
     @app_commands.command(name="addpoi_end",
                    description="Add a POI to the End!")
-    async def addpoi_end(self, interaction: discord.Interaction, x_coord: int, z_coord: int):
-        await run_poi(self, interaction, x_coord, z_coord, logic.addpoi_end)
+    @app_commands.guild_only()
+    @app_commands.describe(marker_type="Choose base, shop, portal, or community.")
+    async def addpoi_end(self, interaction: discord.Interaction, x_coord: int, z_coord: int, marker_type: MarkerType):
+        await open_poi_modal(self.bot, interaction, "End", x_coord, z_coord, marker_type)
 
 
     @app_commands.command(name="addpoi_endcity_claim",
-                   description="Add an End city that you hae raided!")
+                   description="Mark an End city that you have raided!")
+    @app_commands.guild_only()
     async def addpoi_endcity_claim(self, interaction: discord.Interaction, x_coord: int, z_coord: int):
-        await run_poi(self, interaction, x_coord, z_coord, logic.addpoi_endcity_claim)
+        await interaction.response.send_modal(EndCityClaimModal(self.bot, interaction.user.id, x_coord, z_coord))
 
     @app_commands.command(name="addpoi_end_returngateway",
                    description="Mark a return gateway in the End")
