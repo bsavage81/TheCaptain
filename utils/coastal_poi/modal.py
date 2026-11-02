@@ -115,9 +115,46 @@ class EndCityClaimModal(POIModal):
                 "#ffffff", "0", "0", "900 10px 'Font Awesome 6 Free'", "Community", ""]
 
 
+class POIStartView(discord.ui.View):
+    def __init__(self, bot, author_id, dimension, x, z, marker_type):
+        super().__init__(timeout=600)
+        self.bot, self.author_id = bot, author_id
+        self.dimension, self.x, self.z, self.marker_type = dimension, x, z, marker_type
+        self.opened = False
+
+    async def interaction_check(self, interaction):
+        if interaction.user.id != self.author_id:
+            await interaction.response.send_message("These marker instructions belong to another player.", ephemeral=True)
+            return False
+        return True
+
+    @discord.ui.button(label="Open marker form", style=discord.ButtonStyle.primary)
+    async def open_form(self, interaction, button):
+        if not await self.interaction_check(interaction):
+            return
+        if self.opened:
+            await interaction.response.send_message("The form was already opened. Run the command again if you closed it.", ephemeral=True)
+            return
+        self.opened = True
+        try:
+            await interaction.response.send_modal(POIModal(
+                self.bot, self.author_id, self.dimension, self.x, self.z, self.marker_type))
+        except Exception:
+            self.opened = False
+            raise
+        button.disabled = True
+        try:
+            await interaction.message.edit(view=self)
+        except discord.HTTPException:
+            # The form is open; logical single-use protection still applies.
+            pass
+
+
 async def open_poi_modal(bot, interaction, dimension, x, z, marker_type):
-    await interaction.response.send_modal(POIModal(bot, interaction.user.id, dimension, x, z, marker_type))
-    await interaction.followup.send(
-        f"Fill in your marker text and color in the form. Browse free Font Awesome icons: {FONT_AWESOME_URL}\n"
-        "The map uses Font Awesome 6 Free; newer or Pro-only icons may not render. Paste an icon character, not its web address.",
+    await interaction.response.send_message(
+        f"Read these instructions, then click **Open marker form** below to enter your marker text and color. "
+        f"Browse free Font Awesome icons: {FONT_AWESOME_URL}\n"
+        "The map uses Font Awesome 6 Free; newer or Pro-only icons may not render. Paste an icon character, not its web address.\n"
+        "The button is available for 10 minutes. If you close the form, run the command again.",
+        view=POIStartView(bot, interaction.user.id, dimension, x, z, marker_type),
         ephemeral=True, allowed_mentions=discord.AllowedMentions.none())

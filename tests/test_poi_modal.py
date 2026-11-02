@@ -41,10 +41,38 @@ async def test_modal_saves_exact_row_and_private_confirmation(dimension, kind, c
 async def test_modal_link_and_command_parameters_are_passed_through():
     bot, interaction, _ = context()
     await open_poi_modal(bot, interaction, "Nether", -1, 2, "portal")
+    interaction.response.send_modal.assert_not_awaited()
+    message = interaction.response.send_message.call_args
+    assert "https://fontawesome.com/search?ic=free" in message.args[0]
+    assert message.kwargs["ephemeral"]
+    view = message.kwargs["view"]
+    interaction.message = NS(edit=AsyncMock())
+    await view.open_form.callback(interaction)
     modal = interaction.response.send_modal.call_args.args[0]
     assert (modal.x, modal.z, modal.category) == (-1, 2, "Portals")
-    assert "https://fontawesome.com/search?ic=free" in interaction.followup.send.call_args.args[0]
-    assert interaction.followup.send.call_args.kwargs["ephemeral"]
+    assert view.open_form.disabled
+    await view.open_form.callback(interaction)
+    assert interaction.response.send_modal.await_count == 1
+
+
+async def test_marker_button_rejects_another_player():
+    bot, interaction, _ = context()
+    await open_poi_modal(bot, interaction, "Overworld", 1, 2, "base")
+    view = interaction.response.send_message.call_args.kwargs["view"]
+    interaction.user.id = 100
+    await view.open_form.callback(interaction)
+    interaction.response.send_modal.assert_not_awaited()
+    assert not view.opened
+
+
+async def test_marker_button_can_retry_if_modal_did_not_open():
+    bot, interaction, _ = context()
+    await open_poi_modal(bot, interaction, "End", 1, 2, "community")
+    view = interaction.response.send_message.call_args.kwargs["view"]
+    interaction.response.send_modal.side_effect = RuntimeError("synthetic")
+    with pytest.raises(RuntimeError):
+        await view.open_form.callback(interaction)
+    assert not view.opened
 
 
 @pytest.mark.parametrize("dimension", ["Overworld", "Nether", "End"])

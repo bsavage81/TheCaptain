@@ -1,7 +1,11 @@
 # Season 10 marker categories
 
 The standard `/addpoi_overworld`, `/addpoi_nether`, and `/addpoi_end` commands take
-`x_coord`, `z_coord`, and a required `marker_type` choice. They open a private form
+`x_coord`, `z_coord`, and a required `marker_type` choice. They show private instructions
+and a Font Awesome link first, with an **Open marker form** button underneath.
+The button opens the form only when clicked by the command author. It is single use,
+expires after 10 minutes, and disables after opening. Closing a form requires running
+the command again. The form is
 for text line 1 (or an icon character), optional text lines 2/3, and text color.
 Optional lines can be left empty; `no` also clears them. A private helper message
 links to the free Font Awesome icon browser. The map font remains Font Awesome 6
