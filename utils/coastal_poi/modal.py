@@ -121,6 +121,7 @@ class POIStartView(discord.ui.View):
         self.bot, self.author_id = bot, author_id
         self.dimension, self.x, self.z, self.marker_type = dimension, x, z, marker_type
         self.opened = False
+        self.cancelled = False
 
     async def interaction_check(self, interaction):
         if interaction.user.id != self.author_id:
@@ -132,6 +133,9 @@ class POIStartView(discord.ui.View):
     async def open_form(self, interaction, button):
         if not await self.interaction_check(interaction):
             return
+        if self.cancelled:
+            await interaction.response.send_message("Marker entry was cancelled. Run the command again to start over.", ephemeral=True)
+            return
         if self.opened:
             await interaction.response.send_message("The form was already opened. Run the command again if you closed it.", ephemeral=True)
             return
@@ -142,12 +146,26 @@ class POIStartView(discord.ui.View):
         except Exception:
             self.opened = False
             raise
-        button.disabled = True
+        for item in self.children:
+            item.disabled = True
         try:
             await interaction.message.edit(view=self)
         except discord.HTTPException:
             # The form is open; logical single-use protection still applies.
             pass
+
+    @discord.ui.button(label="Cancel", style=discord.ButtonStyle.secondary)
+    async def cancel(self, interaction, button):
+        if not await self.interaction_check(interaction):
+            return
+        if self.opened:
+            await interaction.response.send_message("The form is already open. Close it without submitting to cancel.", ephemeral=True)
+            return
+        self.cancelled = True
+        for item in self.children:
+            item.disabled = True
+        await interaction.response.edit_message(content="Marker entry cancelled. No marker was created.", view=None, embeds=[])
+        self.stop()
 
 
 async def open_poi_modal(bot, interaction, dimension, x, z, marker_type):
@@ -155,6 +173,6 @@ async def open_poi_modal(bot, interaction, dimension, x, z, marker_type):
         f"Read these instructions, then click **Open marker form** below to enter your marker text and color. "
         f"Browse free Font Awesome icons: {FONT_AWESOME_URL}\n"
         "The map uses Font Awesome 6 Free; newer or Pro-only icons may not render. Paste an icon character, not its web address.\n"
-        "The button is available for 10 minutes. If you close the form, run the command again.",
+        "The buttons are available for 10 minutes. Choose **Cancel** to stop. If you close the form, run the command again.",
         view=POIStartView(bot, interaction.user.id, dimension, x, z, marker_type),
         ephemeral=True, allowed_mentions=discord.AllowedMentions.none())

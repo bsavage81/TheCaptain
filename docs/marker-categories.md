@@ -3,7 +3,10 @@
 The standard `/addpoi_overworld`, `/addpoi_nether`, and `/addpoi_end` commands take
 `x_coord`, `z_coord`, and a required `marker_type` choice. They show private instructions
 and a Font Awesome link first, with an **Open marker form** button underneath.
-The button opens the form only when clicked by the command author. It is single use,
+An adjacent **Cancel** button removes the instructions and buttons and confirms that
+no marker was created. Only the command author can cancel. Both buttons disable
+when the form opens; the player can then close the modal without submitting to cancel.
+The Open button opens the form only when clicked by the command author. It is single use,
 expires after 10 minutes, and disables after opening. Closing a form requires running
 the command again. The form is
 for text line 1 (or an icon character), optional text lines 2/3, and text color.

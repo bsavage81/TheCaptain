@@ -75,6 +75,44 @@ async def test_marker_button_can_retry_if_modal_did_not_open():
     assert not view.opened
 
 
+async def test_cancel_removes_buttons_and_prevents_form_or_save():
+    bot, interaction, _ = context()
+    interaction.response.edit_message = AsyncMock()
+    await open_poi_modal(bot, interaction, "Overworld", 1, 2, "base")
+    view = interaction.response.send_message.call_args.kwargs["view"]
+    await view.cancel.callback(interaction)
+    assert view.cancelled and view.is_finished()
+    assert interaction.response.edit_message.call_args.kwargs["view"] is None
+    assert interaction.response.edit_message.call_args.kwargs["embeds"] == []
+    await view.open_form.callback(interaction)
+    interaction.response.send_modal.assert_not_awaited()
+    bot.sheets.submit_poi.assert_not_awaited()
+
+
+async def test_cancel_rejects_another_player():
+    bot, interaction, _ = context()
+    interaction.response.edit_message = AsyncMock()
+    await open_poi_modal(bot, interaction, "End", 1, 2, "portal")
+    view = interaction.response.send_message.call_args.kwargs["view"]
+    interaction.user.id = 100
+    await view.cancel.callback(interaction)
+    assert not view.cancelled
+    interaction.response.edit_message.assert_not_awaited()
+
+
+async def test_cancel_after_opening_does_not_claim_to_cancel_open_form():
+    bot, interaction, _ = context()
+    interaction.response.edit_message = AsyncMock()
+    interaction.message = NS(edit=AsyncMock())
+    await open_poi_modal(bot, interaction, "End", 1, 2, "community")
+    view = interaction.response.send_message.call_args.kwargs["view"]
+    await view.open_form.callback(interaction)
+    assert view.cancel.disabled
+    await view.cancel.callback(interaction)
+    assert not view.cancelled
+    assert "Close it without submitting" in interaction.response.send_message.call_args.args[0]
+
+
 @pytest.mark.parametrize("dimension", ["Overworld", "Nether", "End"])
 @pytest.mark.parametrize("kind,category", [("base", "Player Bases"), ("community", "Community")])
 @pytest.mark.parametrize("value,expected", [("", ""), ("0", 0), (" 150 ", 150), ("00025", 25)])
