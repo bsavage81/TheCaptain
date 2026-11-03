@@ -4,6 +4,7 @@ from discord import app_commands
 from discord.ext import commands
 
 from .runtime import RealmRuntime
+from .panel import PanelController
 
 
 def permitted(settings, interaction):
@@ -63,16 +64,51 @@ def render(view, kind, cooldown=0):
 
 class RealmCommands(commands.Cog):
     realm = app_commands.Group(name="realm", description="Coastal Craft Realm observations", guild_only=True)
+    panel = app_commands.Group(name="panel", description="Manage the live Realm status panel", parent=realm)
 
     def __init__(self, bot, *, runtime=None):
         self.bot = bot
         self.runtime = runtime if runtime is not None else RealmRuntime(bot.settings)
+        self.panels = PanelController(bot, self.runtime)
 
     async def cog_load(self):
         await self.runtime.start()
+        if hasattr(self.bot, "wait_until_ready"):
+            self.panels.start()
 
     async def cog_unload(self):
+        await self.panels.close()
         await self.runtime.close()
+
+    async def manage_panel(self, interaction, action):
+        if not permitted(self.bot.settings, interaction):
+            await interaction.response.send_message("Realm commands require the Coastal OP Team role in Coastal Craft.", ephemeral=True)
+            return
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        if action == "create":
+            url = await self.panels.create(interaction.channel)
+            await self.panels.refresh(manual=True)
+            response = "Realm panel ready: " + url
+        elif action == "remove":
+            await self.panels.remove()
+            response = "Realm panel removed; automatic updates stopped."
+        else:
+            ok = await self.panels.refresh(manual=True)
+            response = "Realm panel updated (upstream cooldowns respected)." if ok else "Panel unavailable or cooling down. Use /realm panel create if it was deleted."
+        if permitted(self.bot.settings, interaction):
+            await interaction.followup.send(response, ephemeral=True, allowed_mentions=discord.AllowedMentions.none())
+
+    @panel.command(name="create", description="Create or relocate the live panel to this channel")
+    async def panel_create(self, interaction: discord.Interaction):
+        await self.manage_panel(interaction, "create")
+
+    @panel.command(name="remove", description="Remove the panel and stop its updates")
+    async def panel_remove(self, interaction: discord.Interaction):
+        await self.manage_panel(interaction, "remove")
+
+    @panel.command(name="refresh", description="Request a read-only update of the existing panel")
+    async def panel_refresh(self, interaction: discord.Interaction):
+        await self.manage_panel(interaction, "refresh")
 
     async def respond(self, interaction, kind):
         if not permitted(self.bot.settings, interaction):

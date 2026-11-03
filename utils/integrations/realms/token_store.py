@@ -269,3 +269,77 @@ class EncryptedTokenStore:
                 Path(temporary).unlink(missing_ok=True)
         if invalid:
             raise StorageError()
+
+    def load_panel_sessions(self):
+        """Separate encrypted auxiliary record; never reads/writes account credentials."""
+        return self._load_auxiliary("panel-sessions.realms.enc", "panel-sessions-v1")
+
+    def load_gamertags(self):
+        return self._load_auxiliary("gamertags.realms.enc", "gamertags-v1")
+
+    def save_gamertags(self, data):
+        self._save_auxiliary("gamertags.realms.enc", "gamertags-v1", data)
+
+    def _load_auxiliary(self, filename, kind):
+        self._check()
+        path = self.directory / filename
+        reject_links(path)
+        if not path.exists():
+            return None
+        try:
+            private_permissions(path)
+            if path.stat().st_size > MAX_CACHE_BYTES or path.stat().st_nlink != 1:
+                raise ValueError()
+            with path.open("rb") as stream:
+                raw = stream.read(MAX_CACHE_BYTES + 1)
+            if len(raw) > MAX_CACHE_BYTES:
+                raise ValueError()
+            outer = json.loads(raw)
+            inner = json.loads(self._keys[outer["key_id"]].decrypt(outer["ciphertext"].encode("ascii")))
+            if inner["binding"] != self.binding or inner["kind"] != kind:
+                raise ValueError()
+            return inner["data"]
+        except (ValueError, KeyError, TypeError, OSError, UnicodeError, InvalidToken, AttributeError):
+            pass
+        raise StorageError()
+
+    def save_panel_sessions(self, data):
+        self._save_auxiliary("panel-sessions.realms.enc", "panel-sessions-v1", data)
+
+    def _save_auxiliary(self, filename, kind, data):
+        self._check()
+        path = self.directory / filename
+        reject_links(path)
+        if path.exists():
+            private_permissions(path)
+            if path.stat().st_nlink != 1:
+                raise StorageError()
+        temporary = None
+        invalid = False
+        try:
+            inner = dict(binding=self.binding, kind=kind, data=data)
+            ciphertext = self._keys[self.active_key_id].encrypt(json.dumps(inner, ensure_ascii=False).encode()).decode("ascii")
+            payload = json.dumps(dict(key_id=self.active_key_id, ciphertext=ciphertext)).encode()
+            if len(payload) > MAX_CACHE_BYTES:
+                raise ValueError()
+            fd, temporary = tempfile.mkstemp(prefix="sessions-", suffix=".realms.enc", dir=self.directory)
+            with os.fdopen(fd, "wb") as stream:
+                private_permissions(Path(temporary))
+                stream.write(payload)
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temporary, path)
+            temporary = None
+            if os.name != "nt":
+                fd = os.open(self.directory, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+                try:
+                    os.fsync(fd)
+                finally:
+                    os.close(fd)
+        except (ValueError, TypeError, OSError):
+            invalid = True
+        finally:
+            if temporary is not None:
+                Path(temporary).unlink(missing_ok=True)
+        if invalid:
+            raise StorageError()

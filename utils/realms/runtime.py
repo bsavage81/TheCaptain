@@ -1,4 +1,4 @@
-"""On-demand observations using the Phase 2 service. No polling or login flow."""
+"""Shared serialized observations using the Phase 2 service; no interactive login."""
 import asyncio
 from contextlib import AsyncExitStack
 from dataclasses import dataclass
@@ -61,6 +61,9 @@ class RealmRuntime:
         self._retry_at = 0
         self.view = Observation()
         self.client = None
+        self.store = None
+        self.names = None
+        self._failures = 0
         self._closed = False
 
     async def start(self):
@@ -78,11 +81,16 @@ class RealmRuntime:
                     await asyncio.to_thread(store.close)
                 raise
             self._stack.push_async_callback(asyncio.to_thread, store.close)
+            self.store = store
             transport = await self._stack.enter_async_context(self._transport_factory(selected_realm_id=self.config.selected_realm_id))
             service = self._service_factory(self.config, transport, store)
             self._stack.push_async_callback(service.close)
             # Internal delegated service identity; OP Team users are never granted auth ownership.
-            self.client = service.client(Principal(self.config.auth_owner_ids[0], self.config.guild_id))
+            principal = Principal(self.config.auth_owner_ids[0], self.config.guild_id)
+            self.client = service.client(principal)
+            if hasattr(service, "profile_client"):
+                from .names import GamertagCache
+                self.names = GamertagCache(service.profile_client(principal), store)
         except asyncio.CancelledError:
             await self._stack.aclose()
             raise
@@ -91,7 +99,7 @@ class RealmRuntime:
             await self._stack.aclose()
             self.client = None
 
-    async def observe(self, *, force=False):
+    async def observe(self, *, force=False, scheduled=False):
         if self._closed or self.client is None:
             return self.view, 0
         task = asyncio.current_task()
@@ -103,9 +111,11 @@ class RealmRuntime:
                 if self._retry_at > self._clock():
                     return self.view, math.ceil(self._retry_at - self._clock())
                 age = float("inf") if self._last_attempt is None else self._clock() - self._last_attempt
-                if force and age < self.refresh_seconds:
+                if scheduled and age < 15:
+                    return self.view, 0
+                if force and not scheduled and age < self.refresh_seconds:
                     return self.view, math.ceil(self.refresh_seconds - age)
-                if not force and age < self.cache_seconds:
+                if not force and not scheduled and age < self.cache_seconds:
                     return self.view, 0
                 self._last_attempt = self._clock()
                 realm, activity = self.view.realm, self.view.activity
@@ -131,14 +141,22 @@ class RealmRuntime:
                                 self._backoff(error)
                 except TimeoutError:
                     log.warning("Realms observation timed out")
+                    self._backoff(TimeoutError())
+                if realm_ok and activity_ok:
+                    self._failures = 0
+                if activity_ok and self.names is not None:
+                    activity = await self.names.enrich(activity)
                 self.view = Observation(realm, activity, realm_ok, activity_ok)
                 return self.view, math.ceil(max(0, self._retry_at - self._clock()))
         finally:
             self._tasks.discard(task)
 
     def _backoff(self, error):
+        self._failures += 1
+        delay = min(900, 15 * 2 ** min(self._failures - 1, 6))
         if isinstance(error, HTTPFailure) and error.retry_after is not None:
-            self._retry_at = max(self._retry_at, self._clock() + error.retry_after)
+            delay = max(delay, error.retry_after)
+        self._retry_at = max(self._retry_at, self._clock() + delay)
 
     async def close(self):
         self._closed = True

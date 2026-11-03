@@ -17,6 +17,7 @@ XSTS_AUTH = "https://xsts.auth.xboxlive.com/xsts/authorize"
 REALMS_HOST = "https://pocket.realms.minecraft.net"
 REALMS_RP = REALMS_HOST + "/"
 XBOX_RP = "http://xboxlive.com"
+PROFILE_BATCH = "https://profile.xboxlive.com/users/batch/profile/settings"
 AUTH_URLS = {AUTHORITY + "/devicecode", AUTHORITY + "/token", USER_AUTH, XSTS_AUTH}
 MAX_RESPONSE_BYTES = 1024 * 1024
 
@@ -68,7 +69,15 @@ class AiohttpTransport:
             self._session = None
 
     async def request(self, method, url, *, headers=None, form=None, payload=None):
+        if method == "POST" and url == PROFILE_BATCH:
+            from .profiles import valid_xuid
+            if (form is not None or not isinstance(payload, dict) or set(payload) != {"userIds", "settings"}
+                    or payload["settings"] != ["Gamertag"] or not isinstance(payload["userIds"], list)
+                    or not 1 <= len(payload["userIds"]) <= 100 or not all(valid_xuid(x) for x in payload["userIds"])
+                    or len(set(payload["userIds"])) != len(payload["userIds"])):
+                raise AccessDenied()
         if not ((method == "POST" and url in AUTH_URLS) or
+                (method == "POST" and url == PROFILE_BATCH) or
                 (method == "GET" and url in self._reads)):
             raise AccessDenied()
         if self._session is None:
