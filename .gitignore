@@ -28,3 +28,9 @@ DailyQuestions.txt
 .database-backups/
 
 .runtimes/
+
+# Only this designated private folder is permitted for in-checkout Realms state.
+/.captain-realms-private/
+*.realms.enc
+oauth.json
+realms.private.json

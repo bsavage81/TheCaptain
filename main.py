@@ -14,6 +14,9 @@ from utils.integrations.__google_sheets import SheetsService
 
 class CaptainCommandTree(app_commands.CommandTree):
     async def interaction_check(self, interaction):
+        # Realm callbacks enforce their own guild/role policy and private denials.
+        if getattr(getattr(interaction, "command", None), "qualified_name", "").startswith("realm "):
+            return True
         if interaction.user.avatar is None:
             await interaction.response.send_message("Due to a discord limitation, you must have an avatar set to use this command.")
             return False
@@ -46,6 +49,8 @@ class TheCaptain(commands.Bot):
                 await self.load_extension(extension)
         if self.settings.get("profiles_enabled") and "utils.players.cog" not in self.extensions:
             await self.load_extension("utils.players.cog")
+        if self.settings.get("realms", {}).get("enabled") and "utils.realms.cog" not in self.extensions:
+            await self.load_extension("utils.realms.cog")
 
     async def on_ready(self):
         logging.getLogger(__name__).info("TheCaptain ready")

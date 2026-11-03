@@ -29,6 +29,7 @@ guide_answer guide_answer_match guide_cells logo_url profiles_enabled checkin_en
 checkin_announcements_enabled checkin_reminders_enabled checkin_timezone checkin_season
 checkin_season_name checkin_channel_id checkin_staff_channel_id checkin_eligible_role_id
 checkin_inactive_role_id checkin_reminder_days profile_sources""".split())
+OPTIONAL_SETTING_KEYS = {"realms"}
 
 
 def load_bootstrap(environ=None):
@@ -52,8 +53,15 @@ def validate_document(document):
     config = document["settings"]
     if not isinstance(config, dict) or not isinstance(document["legacy_settings"], dict):
         raise ValueError("Settings and legacy_settings must be objects")
-    if set(config) != SETTING_KEYS or set(document["legacy_settings"]) - LEGACY_KEYS:
+    if set(config) - OPTIONAL_SETTING_KEYS != SETTING_KEYS or set(document["legacy_settings"]) - LEGACY_KEYS:
         raise ValueError("Settings keys differ from the supported configuration schema")
+    if "realms" in config:
+        from utils.integrations.realms.configuration import from_bot_settings
+        from utils.integrations.realms.errors import ConfigurationError
+        try:
+            from_bot_settings(config)
+        except ConfigurationError:
+            raise ValueError("Invalid Realms operational settings") from None
     for key, value in document["legacy_settings"].items():
         if key == "BotType":
             if str(value).upper() != "STABLE":
@@ -115,7 +123,7 @@ def import_document(source):
     if str(source.get("BotType", source.get("bot_type", "STABLE"))).upper() != "STABLE":
         raise ValueError("Retired deployment config cannot be imported")
     document = json.loads(SEED.read_text(encoding="utf-8"))
-    allowed = set(document["settings"])
+    allowed = set(document["settings"]) | OPTIONAL_SETTING_KEYS
     unknown = set(source) - allowed - LEGACY_KEYS - set(BOOTSTRAP_KEYS) - {"prefix", "bot_type", "sentry_dsn"}
     if unknown:
         raise ValueError("Unknown configuration keys require explicit schema review")
