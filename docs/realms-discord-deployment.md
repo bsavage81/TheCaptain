@@ -70,4 +70,3 @@ Verification on November 3, 2026: **134 focused tests passed** (1.78 seconds), w
 The development-only live panel, encrypted observed-session durations, management
 commands and activation steps are documented in [realms-live-panel.md](realms-live-panel.md).
 Phase 4 requires separate release approval; existing Phase 3 credentials are reused.
-

@@ -85,6 +85,19 @@ async def test_panel_management_permission_and_ephemeral_denial(action, reason):
     cog.panels.refresh.assert_not_awaited()
 
 
+@pytest.mark.parametrize("action", ["create", "remove", "refresh"])
+async def test_panel_management_defers_before_io_and_confirms_privately(action):
+    ctx = interaction()
+    ctx.channel = NS()
+    cog = RealmCommands(NS(settings=settings()), runtime=NS())
+    async def operation(*args, **kwargs):
+        ctx.response.defer.assert_awaited_once_with(ephemeral=True, thinking=True)
+        return "https://discord.com/channels/202/303/404" if action == "create" else True
+    cog.panels = NS(create=AsyncMock(side_effect=operation), remove=AsyncMock(side_effect=operation), refresh=AsyncMock(side_effect=operation))
+    await cog.manage_panel(ctx, action)
+    assert ctx.followup.send.call_args.kwargs["ephemeral"]
+
+
 def controller(configured=True):
     cfg = settings()
     if configured:

@@ -117,7 +117,7 @@ establish a new live API result. No production changes are performed by tests.
 
 ## Offline verification
 
-Focused Python 3.12 run: **92 passed** across `test_realms_panel.py`,
+Focused Python 3.12 run: **95 passed** across `test_realms_panel.py`,
 `test_realms_panel_storage.py`, `test_realms_discord.py` and `test_realms_client.py`.
 This includes synthetic encrypted persistence/atomic failure checks, DB-block
 preservation, permissions, command registration, restart recovery, cache bypass,
