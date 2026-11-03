@@ -64,3 +64,34 @@ validation does not require a new authentication library or credential format. R
 pinned development-only addition for unused imports, undefined names and related F checks. The
 current security audit is recorded in validation.md; baseline-requirements.txt remains historical.
 No new deployment dependencies or panel integration were introduced.
+
+## discord.py 2.7.1 verification — November 3, 2026
+
+The requested version was already pinned in both `requirements.in` and the full runtime
+closure in `requirements.txt`, and installed in the local CPython 3.12.14 environment.
+No dependency, lock, CI configuration or application code changes were needed.
+`baseline-requirements.txt` remains historical evidence and must not be updated to match.
+
+Reviewed the official [2.7.0 and 2.7.1 changelog](https://discordpy.readthedocs.io/en/stable/whats_new.html#v2-7-1)
+against the active bot code. These releases change view cache binding/removal and detach an
+item's view when removed; the POI modal clears and re-adds fields without relying on a
+removed item's view. Existing modal and persistent-view regression coverage passes.
+The 2.7.0 modal five-item limit enforcement is compatible with the current forms.
+Voice now supports DAVE and requires davey when connecting; this bot has no voice connection
+code, so the voice extra is unnecessary. Installed package metadata requires Python >=3.8
+and aiohttp >=3.7.4,<4; the pinned Python 3.12 and aiohttp 3.14.5 satisfy these requirements.
+No blocking compatibility changes were found in the inspected application paths.
+
+Validation in the existing Windows environment:
+
+- Python offline tests: 298 passed.
+- Apps Script offline tests: 11 passed.
+- Compile checks: passed for main.py, utils, migrations, scripts and tests.
+- Ruff F checks: passed for the same paths.
+- Dependency consistency: no broken requirements found, using system pip's `--python`
+  option against `.venv` because that environment has no pip module.
+- Warnings: upstream audioop deprecation and four TextInput label deprecation warnings
+  from the End city modal test. These do not fail the suite; a Label migration is separate work.
+
+This verification did not test live Discord interactions, perform a fresh dependency install,
+run Linux CI or deploy the bot. No PortalBot files or Realms API pilot code were changed.
