@@ -23,10 +23,13 @@ def test_session_encryption_restart_binding_and_credentials_unchanged(tmp_path):
         original = cache.path.read_bytes()
         assert cache.load_panel_sessions() is None
         cache.save_panel_sessions(data)
+        cache.save_gamertags({"entries":{"9876543210987654":{"name":"Private Sailor","expires":2000000000}},"next_lookup":0})
         assert cache.path.read_bytes() == original
         assert b"9876543210987654" not in (directory / "panel-sessions.realms.enc").read_bytes()
+        assert b"Private Sailor" not in (directory / "gamertags.realms.enc").read_bytes()
     with store(directory, keys) as restarted:
         assert restarted.load_panel_sessions() == data
+        assert restarted.load_gamertags()["entries"]["9876543210987654"]["name"] == "Private Sailor"
         assert restarted.load() == account()
     with store(directory, keys, binding={"account_ref":"other"}) as wrong:
         with pytest.raises(StorageError):
@@ -52,6 +55,18 @@ def test_atomic_session_write_failure_preserves_previous_and_token_record(tmp_pa
         assert cache.load_panel_sessions() == {"old":"synthetic"}
         assert cache.path.read_bytes() == credentials
         assert not list(cache.directory.glob("sessions-*"))
+
+
+def test_name_cache_unicode_bound_and_auxiliary_kind_isolation(tmp_path):
+    with store(tmp_path / "private") as cache:
+        data = {"entries": {str(x): {"name":"🦜" * 64,"expires":2000000000} for x in range(1,101)}, "next_lookup":0}
+        cache.save_gamertags(data)
+        assert cache.load_gamertags() == data
+        assert (cache.directory / "gamertags.realms.enc").stat().st_size <= token_store.MAX_CACHE_BYTES
+        cache.save_panel_sessions({"private":"synthetic"})
+        (cache.directory / "gamertags.realms.enc").write_bytes((cache.directory / "panel-sessions.realms.enc").read_bytes())
+        with pytest.raises(StorageError):
+            cache.load_gamertags()
 
 
 def test_panel_database_update_preserves_other_settings_and_schema(monkeypatch):

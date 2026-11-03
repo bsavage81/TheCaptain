@@ -108,9 +108,10 @@ the footer states auto-refresh cadence, stale state and duration estimates.
 
 ## Known limits
 
-The deployed pilot supplied counts but no player names. Unless a later API response
-supplies gamertags, this panel cannot show named session durations. No new Xbox profile
-lookup or permission scope is introduced. Capacity is not verified, so `/10` is omitted.
+The deployed pilot supplied counts but no player names. The development branch now
+resolves missing names through the separate Xbox batch Profile API described below.
+Access with Captain's application is not yet live-verified; unresolved players retain
+the existing unavailable-name/duration display. Capacity is not verified, so `/10` is omitted.
 The suitability of sustained 15-second live polling is unverified until the approved
 release; backoff protects services if rate-limited. These offline changes do not
 establish a new live API result. No production changes are performed by tests.
@@ -124,3 +125,53 @@ preservation, permissions, command registration, restart recovery, cache bypass,
 session transitions and API backoff. Network is blocked by the offline test fixture.
 Ruff F checks and whitespace checks passed. Dependencies remain unchanged for the
 existing Apollo Python 3.14 host; no new host-specific setup was introduced.
+
+## Xbox gamertag resolution
+
+The shared observation runtime (commands and the existing panel loop) now resolves
+missing names for online players with valid, positive 64-bit XUIDs. XUID `0` is not
+a stable player identity: no lookup or duration is assigned to it. No new scheduler,
+library, account registration, environment setting or interactive authentication is
+introduced. This does not change the Realms endpoint allowlist.
+
+The only added HTTP route is `POST https://profile.xboxlive.com/users/batch/profile/settings`
+with an exact body containing up to 100 unique XUIDs and `settings: ["Gamertag"]`.
+Despite using POST, this is a read-only profile retrieval, not a profile/Realm write.
+The request uses contract version 2 and the existing general Xbox (`http://xboxlive.com`)
+XSTS audience, never the Realms audience token. One rejected authorization can be
+renewed through the existing token lifecycle. People Hub, arbitrary profile routes,
+other profile settings and mutation methods remain denied. Source:
+[Microsoft batch Profile API](https://learn.microsoft.com/en-us/windows/uwp/xbox-live/xbox-live-rest/uri/profilev2/uri-usersbatchprofilesettingspost).
+
+Lookup happens only for missing/expired names of observed online players. A batch is
+limited to once per 60 seconds across the shared runtime, not once per 15-second poll.
+Successful mappings expire after 24 hours; omitted/private/unresolved profiles are
+negatively cached for 15 minutes. At most 100 entries are retained. Expired names are
+not displayed; gamertag changes can take up to the cache TTL to appear. Supplied names
+take precedence. Response IDs must match requested XUIDs, with duplicates, invalid
+names and malformed responses rejected. Names remain escaped for display.
+
+Cache records and the next permitted lookup time persist in `gamertags.realms.enc`
+under the existing private token directory, using the same encryption, account binding,
+permissions and writer lock as the separate session record. Authentication and session
+files are unchanged by name-cache writes. Unknown/corrupt cache data is not overwritten;
+lookup stops temporarily with a sanitized warning. Cache storage failures slow future
+lookups while verified names may still be used in memory.
+
+Lookup work is bounded to eight seconds; errors back off from 60 seconds up to one hour,
+honoring a longer Retry-After. Backoff is saved so restarts do not normally cause retry
+storms. No name error changes presence, successful observation timestamps, first-seen
+session times or the independent Realms polling/backoff policy. Cached names are reapplied
+without extra HTTP calls. No XUIDs, tokens or API bodies are logged or displayed.
+
+The name lookup extension's focused offline run passed **135 tests**, covering mocked
+profile responses, audience isolation/renewal, transport restrictions, cache TTL/negative
+caching/bounds, persisted backoff, encryption/restart, zero-XUID handling, failure privacy,
+panel behavior and existing service regressions. Live Profile API access still requires
+explicit approval. After approved deployment, verify a previously unnamed online player
+gets a gamertag and existing `Tracked for` duration; verify subsequent 15-second polls
+reuse the mapping. If Profile API access is denied, retain Realm counts/session tracking
+and report the sanitized status rather than switching apps/accounts or loosening scopes.
+
+A subsequent targeted storage run passed **4 tests**, including maximum-size Unicode
+name-cache round trips and rejection of a session record substituted for a name-cache record.

@@ -180,6 +180,11 @@ class RealmsService:
         self._check(principal)
         return RealmsClient(self.transport, self.authorization_for, self.config, principal, **kwargs)
 
+    def profile_client(self, principal):
+        from .profiles import ProfileClient
+        self._check(principal)
+        return ProfileClient(self.transport, self.authorization_for, self.config, principal)
+
     async def close(self):
         if self._login_task and self._login_task is not asyncio.current_task():
             self._login_task.cancel()

@@ -5,6 +5,8 @@ import json
 import logging
 import math
 
+from utils.integrations.realms.profiles import valid_xuid
+
 import discord
 from discord.ext import tasks
 
@@ -53,7 +55,7 @@ class Sessions:
             if not isinstance(active, dict) or len(active) > 1000 or type(last) not in (int, float) or not math.isfinite(last) or last < 0:
                 raise ValueError("Invalid private session state")
             for xuid, start in active.items():
-                if not isinstance(xuid, str) or not xuid.isascii() or not xuid.isdigit() or len(xuid) > 32 or type(start) not in (int, float) or not math.isfinite(start) or not 0 <= start <= last:
+                if not valid_xuid(xuid) or type(start) not in (int, float) or not math.isfinite(start) or not 0 <= start <= last:
                     raise ValueError("Invalid private session state")
             self.active = dict(active)
             self.last_observation = last
@@ -64,7 +66,7 @@ class Sessions:
     @staticmethod
     def authoritative(view):
         return bool(view.activity_available and view.activity and all(
-            type(p.online) is bool and isinstance(p.xuid, str) and p.xuid.isascii() and p.xuid.isdigit()
+            type(p.online) is bool and valid_xuid(p.xuid)
             for p in view.activity.data.players))
 
     def observe(self, view):

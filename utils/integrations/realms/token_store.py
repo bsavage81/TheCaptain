@@ -272,8 +272,17 @@ class EncryptedTokenStore:
 
     def load_panel_sessions(self):
         """Separate encrypted auxiliary record; never reads/writes account credentials."""
+        return self._load_auxiliary("panel-sessions.realms.enc", "panel-sessions-v1")
+
+    def load_gamertags(self):
+        return self._load_auxiliary("gamertags.realms.enc", "gamertags-v1")
+
+    def save_gamertags(self, data):
+        self._save_auxiliary("gamertags.realms.enc", "gamertags-v1", data)
+
+    def _load_auxiliary(self, filename, kind):
         self._check()
-        path = self.directory / "panel-sessions.realms.enc"
+        path = self.directory / filename
         reject_links(path)
         if not path.exists():
             return None
@@ -281,9 +290,13 @@ class EncryptedTokenStore:
             private_permissions(path)
             if path.stat().st_size > MAX_CACHE_BYTES or path.stat().st_nlink != 1:
                 raise ValueError()
-            outer = json.loads(path.read_bytes())
+            with path.open("rb") as stream:
+                raw = stream.read(MAX_CACHE_BYTES + 1)
+            if len(raw) > MAX_CACHE_BYTES:
+                raise ValueError()
+            outer = json.loads(raw)
             inner = json.loads(self._keys[outer["key_id"]].decrypt(outer["ciphertext"].encode("ascii")))
-            if inner["binding"] != self.binding or inner["kind"] != "panel-sessions-v1":
+            if inner["binding"] != self.binding or inner["kind"] != kind:
                 raise ValueError()
             return inner["data"]
         except (ValueError, KeyError, TypeError, OSError, UnicodeError, InvalidToken, AttributeError):
@@ -291,8 +304,11 @@ class EncryptedTokenStore:
         raise StorageError()
 
     def save_panel_sessions(self, data):
+        self._save_auxiliary("panel-sessions.realms.enc", "panel-sessions-v1", data)
+
+    def _save_auxiliary(self, filename, kind, data):
         self._check()
-        path = self.directory / "panel-sessions.realms.enc"
+        path = self.directory / filename
         reject_links(path)
         if path.exists():
             private_permissions(path)
@@ -301,8 +317,8 @@ class EncryptedTokenStore:
         temporary = None
         invalid = False
         try:
-            inner = dict(binding=self.binding, kind="panel-sessions-v1", data=data)
-            ciphertext = self._keys[self.active_key_id].encrypt(json.dumps(inner).encode()).decode("ascii")
+            inner = dict(binding=self.binding, kind=kind, data=data)
+            ciphertext = self._keys[self.active_key_id].encrypt(json.dumps(inner, ensure_ascii=False).encode()).decode("ascii")
             payload = json.dumps(dict(key_id=self.active_key_id, ciphertext=ciphertext)).encode()
             if len(payload) > MAX_CACHE_BYTES:
                 raise ValueError()

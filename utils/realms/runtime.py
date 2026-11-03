@@ -62,6 +62,7 @@ class RealmRuntime:
         self.view = Observation()
         self.client = None
         self.store = None
+        self.names = None
         self._failures = 0
         self._closed = False
 
@@ -85,7 +86,11 @@ class RealmRuntime:
             service = self._service_factory(self.config, transport, store)
             self._stack.push_async_callback(service.close)
             # Internal delegated service identity; OP Team users are never granted auth ownership.
-            self.client = service.client(Principal(self.config.auth_owner_ids[0], self.config.guild_id))
+            principal = Principal(self.config.auth_owner_ids[0], self.config.guild_id)
+            self.client = service.client(principal)
+            if hasattr(service, "profile_client"):
+                from .names import GamertagCache
+                self.names = GamertagCache(service.profile_client(principal), store)
         except asyncio.CancelledError:
             await self._stack.aclose()
             raise
@@ -139,6 +144,8 @@ class RealmRuntime:
                     self._backoff(TimeoutError())
                 if realm_ok and activity_ok:
                     self._failures = 0
+                if activity_ok and self.names is not None:
+                    activity = await self.names.enrich(activity)
                 self.view = Observation(realm, activity, realm_ok, activity_ok)
                 return self.view, math.ceil(max(0, self._retry_at - self._clock()))
         finally:
