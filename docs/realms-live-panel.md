@@ -45,7 +45,7 @@ No new environment variables, keys or Microsoft authentication are required.
 
 The approved API model and pilot records establish no reliable join timestamp.
 No undocumented timestamp is interpreted as an exact login time. Sessions therefore
-begin with the first successful online observation and always display **Tracked for**
+begin with the first successful online observation and always display **Online for**
 (`8m`, `47m`, `2h 34m`). This is sampled monitoring time, not an exact login or a
 guarantee of uninterrupted presence during bot downtime or failed observations.
 Sampling can miss departures/rejoins between polls, including during a restart.
@@ -169,7 +169,7 @@ profile responses, audience isolation/renewal, transport restrictions, cache TTL
 caching/bounds, persisted backoff, encryption/restart, zero-XUID handling, failure privacy,
 panel behavior and existing service regressions. Live Profile API access still requires
 explicit approval. After approved deployment, verify a previously unnamed online player
-gets a gamertag and existing `Tracked for` duration; verify subsequent 15-second polls
+gets a gamertag and existing `Online for` duration; verify subsequent 15-second polls
 reuse the mapping. If Profile API access is denied, retain Realm counts/session tracking
 and report the sanitized status rather than switching apps/accounts or loosening scopes.
 
