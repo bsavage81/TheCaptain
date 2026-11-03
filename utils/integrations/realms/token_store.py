@@ -269,3 +269,61 @@ class EncryptedTokenStore:
                 Path(temporary).unlink(missing_ok=True)
         if invalid:
             raise StorageError()
+
+    def load_panel_sessions(self):
+        """Separate encrypted auxiliary record; never reads/writes account credentials."""
+        self._check()
+        path = self.directory / "panel-sessions.realms.enc"
+        reject_links(path)
+        if not path.exists():
+            return None
+        try:
+            private_permissions(path)
+            if path.stat().st_size > MAX_CACHE_BYTES or path.stat().st_nlink != 1:
+                raise ValueError()
+            outer = json.loads(path.read_bytes())
+            inner = json.loads(self._keys[outer["key_id"]].decrypt(outer["ciphertext"].encode("ascii")))
+            if inner["binding"] != self.binding or inner["kind"] != "panel-sessions-v1":
+                raise ValueError()
+            return inner["data"]
+        except (ValueError, KeyError, TypeError, OSError, UnicodeError, InvalidToken, AttributeError):
+            pass
+        raise StorageError()
+
+    def save_panel_sessions(self, data):
+        self._check()
+        path = self.directory / "panel-sessions.realms.enc"
+        reject_links(path)
+        if path.exists():
+            private_permissions(path)
+            if path.stat().st_nlink != 1:
+                raise StorageError()
+        temporary = None
+        invalid = False
+        try:
+            inner = dict(binding=self.binding, kind="panel-sessions-v1", data=data)
+            ciphertext = self._keys[self.active_key_id].encrypt(json.dumps(inner).encode()).decode("ascii")
+            payload = json.dumps(dict(key_id=self.active_key_id, ciphertext=ciphertext)).encode()
+            if len(payload) > MAX_CACHE_BYTES:
+                raise ValueError()
+            fd, temporary = tempfile.mkstemp(prefix="sessions-", suffix=".realms.enc", dir=self.directory)
+            with os.fdopen(fd, "wb") as stream:
+                private_permissions(Path(temporary))
+                stream.write(payload)
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temporary, path)
+            temporary = None
+            if os.name != "nt":
+                fd = os.open(self.directory, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+                try:
+                    os.fsync(fd)
+                finally:
+                    os.close(fd)
+        except (ValueError, TypeError, OSError):
+            invalid = True
+        finally:
+            if temporary is not None:
+                Path(temporary).unlink(missing_ok=True)
+        if invalid:
+            raise StorageError()

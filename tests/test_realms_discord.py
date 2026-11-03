@@ -227,7 +227,7 @@ async def test_command_registration_is_coastal_only_and_unload_closes_runtime(mo
     await setup(bot)
     cog = bot.add_cog.call_args.args[0]
     assert cog.realm._guild_ids == [202]
-    assert sorted(c.name for c in cog.realm.commands) == ["players", "refresh", "status"]
+    assert sorted(c.name for c in cog.realm.commands) == ["panel", "players", "refresh", "status"]
     await cog.cog_load()
     await cog.cog_unload()
     fake.start.assert_awaited_once()
@@ -274,7 +274,7 @@ async def test_real_bot_registers_only_in_coastal_and_close_unloads(monkeypatch)
     bot = TheCaptain(settings())
     await bot.load_extension("utils.realms.cog")
     group = bot.tree.get_command("realm", guild=discord.Object(202))
-    assert group is not None and sorted(c.name for c in group.commands) == ["players", "refresh", "status"]
+    assert group is not None and sorted(c.name for c in group.commands) == ["panel", "players", "refresh", "status"]
     assert bot.tree.get_command("realm") is None
     assert bot.tree.get_command("realm", guild=discord.Object(999)) is None
     await bot.close()

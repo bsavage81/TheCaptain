@@ -65,3 +65,9 @@ Focused offline tests cover command permission denial, role changes, private rep
 No live Discord command was invoked or synced. Remaining deployment gates are host credential/secret provisioning, operator review of the database block, approved restart and guild-only sync, then a Discord smoke test with an OP Team member plus a denied non-member. There are no Realm management endpoints or scheduled tasks in this change.
 
 Verification on November 3, 2026: **134 focused tests passed** (1.78 seconds), with one existing upstream audioop deprecation warning. Ruff F checks, compilation of changed Python paths and diff whitespace checks passed. No new dependencies were installed; Python 3.12 and discord.py 2.7.1 remain unchanged.
+# Phase 4 follow-up
+
+The development-only live panel, encrypted observed-session durations, management
+commands and activation steps are documented in [realms-live-panel.md](realms-live-panel.md).
+Phase 4 requires separate release approval; existing Phase 3 credentials are reused.
+
