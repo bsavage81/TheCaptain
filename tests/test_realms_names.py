@@ -120,7 +120,7 @@ async def test_cached_names_persist_restart_and_expire_without_changing_activity
     sessions = Sessions("42")
     sessions.observe(observation((player(name=None),)))
     result = replace(observation((player(name=None),)), activity=enriched)
-    assert "Tracked for" in str(panel_embed(result, sessions,15).to_dict())
+    assert "Online for" in str(panel_embed(result, sessions,15).to_dict())
     assert sessions.active.keys() == {"123"}
 
 

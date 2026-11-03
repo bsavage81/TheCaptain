@@ -89,7 +89,7 @@ class Sessions:
             return "Duration unavailable"
         minutes = max(0, int((now - start) // 60))
         value = f"{minutes}m" if minutes < 60 else f"{minutes // 60}h {minutes % 60}m"
-        return "Tracked for " + value
+        return "Online for " + value
 
 
 def panel_embed(view, sessions, interval, *, now=None, storage_ok=True):

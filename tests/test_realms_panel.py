@@ -33,7 +33,7 @@ def test_sessions_join_failure_unknown_leave_rejoin_and_restart():
     restored = Sessions("42", s.document())
     assert not restored.observe(observation((player(name="Renamed"),), 200))
     assert restored.active["123"] == start
-    assert restored.duration(player(), start + 9240, reliable=True) == "Tracked for 2h 34m"
+    assert restored.duration(player(), start + 9240, reliable=True) == "Online for 2h 34m"
     assert restored.observe(observation((), 300))
     assert restored.active == {}
     assert restored.observe(observation((player(),), 400))
@@ -61,7 +61,7 @@ def test_embed_truthful_names_durations_unknown_zero_and_no_ids():
     s.observe(v)
     embed = panel_embed(v, s, 15, now=v.activity.observed_at + timedelta(minutes=8)).to_dict()
     text = "\n".join(f["value"] for f in embed["fields"])
-    assert "Tracked for 8m" in text and "Duration unavailable" in text
+    assert "Online for 8m" in text and "Duration unavailable" in text
     assert "123" not in text and "4567890123456789" not in text
     assert "@\u200beveryone" in text and "\\*" in text
     assert "/10" not in text and "<t:" in text
