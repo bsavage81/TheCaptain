@@ -13,7 +13,7 @@ from typing import Protocol
 
 from cryptography.fernet import Fernet, InvalidToken
 
-from .errors import StorageBusy, StorageError
+from .errors import ProtocolError, StorageBusy, StorageError
 from .models import Identity, Secret, StoredAccount, text
 
 MAX_CACHE_BYTES = 65536
@@ -57,7 +57,9 @@ def _windows_permissions(path, create=False):
    if ($rule.AccessControlType -eq 'Allow' -and $rule.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value -notin $trusted) { exit 1 }
  }
 """
-    environment = dict(os.environ, CAPTAIN_PRIVATE_PATH=str(path), CAPTAIN_PRIVATE_CREATE="1" if create else "0")
+    # Do not propagate token/key environment variables to the ACL helper process.
+    environment = {k: v for k, v in os.environ.items() if k.upper() in {"SYSTEMROOT", "WINDIR", "PATH", "TEMP", "TMP"}}
+    environment.update(CAPTAIN_PRIVATE_PATH=str(path), CAPTAIN_PRIVATE_CREATE="1" if create else "0")
     result = subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script],
                             env=environment, capture_output=True, timeout=15, check=False,
                             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
@@ -188,14 +190,14 @@ class EncryptedTokenStore:
                 outer = json.loads(stream.read(MAX_CACHE_BYTES + 1))
             key = self._keys[outer["key_id"]]
             document = json.loads(key.decrypt(outer["ciphertext"].encode("ascii")))
-            if document["version"] != 1 or document["binding"] != self.binding or document["key_id"] != outer["key_id"]:
+            if not isinstance(document, dict) or set(document) != {"version", "binding", "key_id", "revoked", "xuid", "gamertag", "refresh"} or type(document["version"]) is not int or document["version"] != 1 or document["binding"] != self.binding or document["key_id"] != outer["key_id"]:
                 raise ValueError()
             revoked = document["revoked"]
             xuid = text(document["xuid"])
             if type(revoked) is not bool or not xuid.isascii() or not xuid.isdigit():
                 raise ValueError()
             account = StoredAccount(Secret(text(document["refresh"])), Identity(xuid, text(document["gamertag"])), revoked)
-        except (ValueError, KeyError, TypeError, OSError, UnicodeError, InvalidToken):
+        except (ValueError, KeyError, TypeError, OSError, UnicodeError, InvalidToken, ProtocolError, AttributeError):
             invalid = True
         if invalid:
             raise StorageError()

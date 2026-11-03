@@ -136,3 +136,32 @@ def test_windows_broad_acl_refused(tmp_path):
     assert result.returncode == 0
     with pytest.raises(StorageError):
         store(path).open()
+
+
+@pytest.mark.parametrize("document", [None, [], {"version": True},
+    {"version": 1, "key_id": "key-one", "binding": config().binding, "revoked": False,
+     "xuid": "123456", "gamertag": "Synthetic Player", "refresh": "canary\nsecret"}])
+def test_authenticated_but_malformed_payload_is_sanitized(tmp_path, document):
+    with store(tmp_path / "private") as cache:
+        ciphertext = cache._keys["key-one"].encrypt(json.dumps(document).encode()).decode()
+        cache.path.write_text(json.dumps({"key_id": "key-one", "ciphertext": ciphertext}))
+        # New file inherits the private directory ACL; POSIX requires explicit private mode.
+        if os.name != "nt":
+            cache.path.chmod(0o600)
+        with pytest.raises(StorageError) as raised:
+            cache.load()
+        assert raised.value.__context__ is None
+
+
+def test_acl_helper_does_not_inherit_secret_environment(monkeypatch, tmp_path):
+    from types import SimpleNamespace
+    captured = {}
+    monkeypatch.setenv("CAPTAIN_REALMS_KEYS", "canary-key")
+    monkeypatch.setenv("OTHER_PRIVATE_TOKEN", "canary-token")
+    def run(*args, **kwargs):
+        captured.update(kwargs["env"])
+        return SimpleNamespace(returncode=0)
+    monkeypatch.setattr(token_store.subprocess, "run", run)
+    token_store._windows_permissions(tmp_path)
+    assert "CAPTAIN_REALMS_KEYS" not in captured and "OTHER_PRIVATE_TOKEN" not in captured
+    assert "canary" not in repr(captured)

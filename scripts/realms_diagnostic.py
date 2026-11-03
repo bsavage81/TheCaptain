@@ -5,6 +5,7 @@ startup, Discord commands, database reads, background jobs or automatic logins.
 """
 import argparse
 import asyncio
+from dataclasses import replace
 import json
 import logging
 import os
@@ -12,7 +13,7 @@ from pathlib import Path
 import sys
 
 from utils.integrations.realms.configuration import Principal, RealmsConfig
-from utils.integrations.realms.errors import ConfigurationError, RealmsError
+from utils.integrations.realms.errors import ConfigurationError, HTTPFailure, RealmsError
 from utils.integrations.realms.models import Secret
 from utils.integrations.realms.service import RealmsService
 from utils.integrations.realms.token_store import EncryptedTokenStore
@@ -25,7 +26,7 @@ def load_config(path):
     try:
         if path.stat().st_size > 16384:
             raise ValueError()
-        config = RealmsConfig.from_document(json.loads(path.read_text(encoding="utf-8")))
+        config = RealmsConfig.from_document(json.loads(path.read_text(encoding="utf-8-sig")))
     except (OSError, ValueError, UnicodeError):
         failed = True
     if failed:
@@ -70,6 +71,9 @@ async def live(args, config, *, transport_factory=AiohttpTransport):
                     # This first request verifies identity through the service before Realms I/O.
                     realms = await client.list_realms()
                     print("Accessible Realm count:", len(realms.data))
+                    if getattr(args, "show_realm_ids", False):
+                        for realm in realms.data:
+                            print("Private Realm selection:", realm.id, realm.name)
                     if config.selected_realm_id:
                         realm = await client.realm()
                         print("Selected Realm state:", realm.data.state)
@@ -90,6 +94,10 @@ def main(argv=None):
     parser.add_argument("--store-dir", type=Path)
     parser.add_argument("--key-id")
     parser.add_argument("--allow-live", action="store_true")
+    parser.add_argument("--validate-enabled", action="store_true",
+                        help="Check all enabled settings offline without changing the disabled config")
+    parser.add_argument("--show-realm-ids", action="store_true",
+                        help="Show private Realm IDs/names during an explicitly approved probe only")
     args = parser.parse_args(argv)
     # CLI is a private terminal workflow, not a logger: suppress third-party wire logs.
     previous_logging = logging.root.manager.disable
@@ -97,6 +105,9 @@ def main(argv=None):
     try:
         config = load_config(args.config)
         if args.action == "check":
+            if args.validate_enabled:
+                replace(config, enabled=True)
+                print("Enabled settings valid; file unchanged (offline).")
             print("Configuration valid; integration", "enabled for manual use" if config.enabled else "disabled", "(offline).")
             return 0
         config.authorize(Principal(args.user_id, args.guild_id))
@@ -110,6 +121,10 @@ def main(argv=None):
         return 0
     except RealmsError as error:
         print("Diagnostic stopped:", error.category, file=sys.stderr)
+        if isinstance(error, HTTPFailure):
+            print("HTTP status:", error.status, file=sys.stderr)
+            if error.retry_after is not None:
+                print("Retry after seconds:", error.retry_after, file=sys.stderr)
         return 1
     except KeyboardInterrupt:
         print("Diagnostic cancelled.", file=sys.stderr)

@@ -59,7 +59,7 @@ class RealmsService:
                 raise
 
     def _identity(self, token):
-        if not isinstance(token.xuid, str) or not token.xuid.isascii() or not token.xuid.isdigit() or not isinstance(token.gamertag, str):
+        if not isinstance(token.xuid, str) or not token.xuid.isascii() or not token.xuid.isdigit() or not isinstance(token.gamertag, str) or any(ord(c) < 32 for c in token.gamertag):
             raise IdentityMismatch()
         if token.gamertag.strip().casefold() != self.config.expected_gamertag.strip().casefold():
             raise IdentityMismatch()
@@ -79,7 +79,7 @@ class RealmsService:
         self._check(principal)
         async with self._lock:
             self._check(principal)
-            if self._pending is not pending or pending.principal != principal:
+            if not isinstance(pending, PendingLogin) or self._pending is not pending or pending.principal != principal:
                 raise AccessDenied()
             self._login_task = asyncio.current_task()
             try:
@@ -90,6 +90,9 @@ class RealmsService:
                 user = await self.xbox.user_token(oauth)
                 identity_token = await self.xbox.authorize(user, XBOX_RP)
                 identity = self._identity(identity_token)
+                previous = await self._storage(self.store.load)
+                if previous is not None and previous.identity.xuid != identity.xuid:
+                    raise IdentityMismatch()
                 # Confirm identity BEFORE storing new account credentials or accessing any Realm.
                 self._check(principal)
                 account = StoredAccount(oauth.refresh, identity)
@@ -104,7 +107,7 @@ class RealmsService:
 
     def cancel_device_login(self, principal, pending):
         self._check(principal)
-        if pending is not self._pending or pending.principal != principal:
+        if not isinstance(pending, PendingLogin) or pending is not self._pending or pending.principal != principal:
             raise AccessDenied()
         self._pending = None
         if self._login_task:

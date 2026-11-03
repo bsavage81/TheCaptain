@@ -185,3 +185,33 @@ async def test_expiring_tokens_rebuild_without_cross_account_cache():
     http.responses.append(xbox(clock))
     assert await api.authorization_for(PRINCIPAL) is not first
     assert len(http.calls) == 5
+
+
+async def test_missing_or_forged_login_handle_is_denied_cleanly():
+    api = service(FakeHTTP(), FakeTime())
+    for pending in (None, object()):
+        with pytest.raises(AccessDenied):
+            await api.complete_device_login(PRINCIPAL, pending)
+        with pytest.raises(AccessDenied):
+            api.cancel_device_login(PRINCIPAL, pending)
+    assert not api.transport.calls
+
+
+async def test_relogin_cannot_replace_existing_pinned_xuid():
+    clock = FakeTime()
+    store = MemoryStore(account(identity=Identity("789", "Synthetic Player")))
+    api = service(FakeHTTP(device(), oauth(), xbox(clock), xbox(clock)), clock, store)
+    pending = await api.begin_device_login(PRINCIPAL)
+    with pytest.raises(IdentityMismatch):
+        await api.complete_device_login(PRINCIPAL, pending)
+    assert not store.saved and store.account.identity.xuid == "789"
+
+
+async def test_login_identity_rejects_control_characters_before_print_or_save():
+    clock = FakeTime()
+    store = MemoryStore()
+    api = service(FakeHTTP(device(), oauth(), xbox(clock), xbox(clock, claim={"gtg": "Synthetic Player\r\n"})), clock, store)
+    pending = await api.begin_device_login(PRINCIPAL)
+    with pytest.raises(IdentityMismatch):
+        await api.complete_device_login(PRINCIPAL, pending)
+    assert not store.saved

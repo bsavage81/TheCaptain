@@ -113,3 +113,74 @@ def test_cli_restores_logging_state(tmp_path):
     previous = logging.root.manager.disable
     assert diagnostic.main(["--config", str(path)]) == 0
     assert logging.root.manager.disable == previous
+
+
+def test_private_live_confirmation_decline_never_opens_transport(tmp_path, monkeypatch):
+    from dataclasses import asdict
+    path = tmp_path / "enabled.json"
+    path.write_text(json.dumps({"version": 1, "realms": asdict(config())}))
+    monkeypatch.setattr(diagnostic.sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr(diagnostic.sys.stdout, "isatty", lambda: True)
+    monkeypatch.setattr("builtins.input", lambda prompt: "NO")
+    monkeypatch.setattr(diagnostic, "live", lambda *a: pytest.fail("Live path reached"))
+    assert diagnostic.main(["login", "--config", str(path), "--user-id", "101", "--guild-id", "202",
+        "--store-dir", str(tmp_path), "--key-id", "test", "--allow-live"]) == 2
+
+
+@pytest.mark.parametrize("show_ids", [False, True])
+async def test_private_discovery_identifiers_require_output_opt_in(monkeypatch, capsys, show_ids):
+    from unittest.mock import AsyncMock
+    from utils.integrations.realms.models import Realm, Snapshot, utcnow
+    from realms_fakes import MemoryStore
+    class ContextStore(MemoryStore):
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            pass
+    class ContextHTTP:
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *args):
+            pass
+    fake_client = SimpleNamespace(list_realms=AsyncMock(return_value=Snapshot(
+        (Realm("42", "Private Synthetic Realm", "OPEN", None),), utcnow())))
+    fake_service = SimpleNamespace(client=lambda p: fake_client, close=AsyncMock())
+    monkeypatch.setattr(diagnostic, "RealmsService", lambda *a: fake_service)
+    monkeypatch.setattr(diagnostic, "load_keys", lambda: {})
+    monkeypatch.setattr(diagnostic, "EncryptedTokenStore", lambda *a: ContextStore())
+    args = SimpleNamespace(user_id=101, guild_id=202, store_dir=None, key_id="test", action="probe", show_realm_ids=show_ids)
+    await diagnostic.live(args, config(selected_realm_id=None), transport_factory=lambda **k: ContextHTTP())
+    output = capsys.readouterr().out
+    assert ("Private Synthetic Realm" in output) is show_ids
+    assert ("Private Realm selection: 42" in output) is show_ids
+
+
+def test_validate_enabled_checks_disabled_config_without_activating_it(tmp_path, monkeypatch, capsys):
+    from dataclasses import asdict
+    path = tmp_path / "prepared.json"
+    values = asdict(config())
+    values["enabled"] = False
+    path.write_text(json.dumps({"version": 1, "realms": values}))
+    before = path.read_bytes()
+    monkeypatch.setattr(diagnostic, "live", lambda *a: pytest.fail("Live path reached"))
+    assert diagnostic.main(["check", "--config", str(path), "--validate-enabled"]) == 0
+    assert path.read_bytes() == before
+    assert "Enabled settings valid" in capsys.readouterr().out
+    values["client_id"] = ""
+    path.write_text(json.dumps({"version": 1, "realms": values}))
+    assert diagnostic.main(["check", "--config", str(path), "--validate-enabled"]) == 1
+
+
+def test_windows_powershell_utf8_bom_config_is_supported(tmp_path):
+    path = tmp_path / "private.json"
+    path.write_text('{"version":1,"realms":{"enabled":false}}', encoding="utf-8-sig")
+    assert diagnostic.load_config(path).enabled is False
+
+
+def test_diagnostic_exposes_only_fixed_http_status_and_retry(monkeypatch, tmp_path, capsys):
+    from utils.integrations.realms.errors import HTTPFailure
+    def failure(path):
+        raise HTTPFailure(429, 120)
+    monkeypatch.setattr(diagnostic, "load_config", failure)
+    assert diagnostic.main(["check", "--config", str(tmp_path / "unused")]) == 1
+    assert capsys.readouterr().err == "Diagnostic stopped: upstream_http_failed\nHTTP status: 429\nRetry after seconds: 120\n"

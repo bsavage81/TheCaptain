@@ -1,5 +1,9 @@
 # Realms Phase 2: private authentication and read-only diagnostic
 
+For exact private Windows setup and the login-only approval boundary, see
+[Windows preparation and first-test procedure](realms-windows-first-test.md).
+It uses the owner's updated test identity only in the private configuration.
+
 Implemented against main's `REALMS_INTEGRATION_PLAN.md` at `694cd90`. Status: **offline implementation only; live authentication is not authorized**. This runbook does not grant that authorization. No Microsoft account or Coastal Craft Realm has been contacted during implementation. No production initialization, command registration, database migration or background polling was added.
 
 ## Components and dependency decision
@@ -95,7 +99,7 @@ Provision a persistent private parent directory outside the repository, deployme
 - **Key rotation:** provision old and new keys together, select the new active key ID, load the existing record then save it once through the store. Verify restart with only the new key before retiring old keys/backups. No diagnostic rotation command is included; use a reviewed offline operator procedure. Missing keys require reauthentication; they never create a plaintext cache.
 - **Backups/revocation:** back up ciphertext and configuration separately from the secret key, restrict access, and test recovery under the correct service identity. Protect against restoring an older unrevoked backup. Local deletion is not Microsoft-side revocation; use Microsoft account/application consent/session controls after compromise.
 
-The private diagnostic acquires and validates storage before opening its aiohttp session. It suppresses logging during its execution and prints only fixed errors/counts/state except the deliberately displayed private Microsoft user code and verified gamertag. Do not redirect login output to files, record the terminal or attach debugger locals. The library emits no token/body logging; external callers must likewise avoid wire tracing, traceback-local capture or logging request objects. No Python code can prevent a privileged debugger from inspecting live process memory.
+The private diagnostic acquires and validates storage before opening its aiohttp session. It suppresses logging during its execution and prints fixed error categories, HTTP status/retry timing, counts and state except the deliberately displayed private Microsoft user code and verified gamertag. A separately approved probe can explicitly opt into private Realm ID/name output with `--show-realm-ids`; default output remains count-only. Do not redirect login output to files, record the terminal or attach debugger locals. The library emits no token/body logging; external callers must likewise avoid wire tracing, traceback-local capture or logging request objects. No Python code can prevent a privileged debugger from inspecting live process memory.
 
 ## Allowed Realms calls
 
@@ -143,13 +147,13 @@ Run the complete repository checks using the existing environment:
 node --test apps_script/coastal_application/test-backend.cjs
 ```
 
-Final local results, November 3, 2026:
+Latest offline review results, November 3, 2026:
 
 | Check | Result |
 | --- | --- |
-| Full Python offline suite | **410 passed, 1 skipped**, 19.91 seconds; includes 112 passing Realms tests |
+| Full Python offline suite | **424 passed, 1 skipped**, 23.65 seconds; includes 126 passing Realms tests |
 | Platform skip | POSIX permission test skipped on Windows; Windows ACL tests executed |
-| Apps Script regression suite | **11 passed** |
+| Apps Script regression suite | Previous Phase 2 verification: **11 passed**; unchanged in this review |
 | Ruff F checks and compileall, full existing paths | Passed |
 | Existing environment dependency consistency | No broken requirements (`.venv` Python running existing `.audit-tools/pip --python .venv check`) |
 | Python 3.12 AST syntax check for the 11 new modules/diagnostic | Passed |
@@ -157,3 +161,21 @@ Final local results, November 3, 2026:
 | Diff/whitespace checks | Passed |
 
 The five full-suite warnings are existing upstream audioop and modal TextInput label deprecations. Linux-specific permission code must also pass existing Linux CI; Windows execution cannot certify it. No fresh online vulnerability audit or live protocol test is implied by passing offline tests. Remaining gates: actual Captain app/scope acceptance, current Bedrock headers, general-XSTS identity claim availability, ordinary-member read permissions, provider storage/backup suitability and approved host deployment. If any authentication gate fails, stop; do not substitute account credentials or an owner's token.
+
+## Offline review findings and fixes
+
+Reviewed on `codex/realms-phase2` starting at `d2b2dbd`, with a clean working tree. All edits remain confined to the Realms modules, diagnostic, tests and documentation. No live-account configuration/key was created. The committed example remains disabled.
+
+| Finding | Fix and regression evidence |
+| --- | --- |
+| Missing/forged login handle could raise AttributeError instead of policy denial | Validate PendingLogin type before accessing its fields; clean denial without HTTP |
+| Explicit re-login could overwrite an existing XUID pin if a different account presented the same expected gamertag | Load existing encrypted identity before saving a new login; require matching XUID and preserve old cache on mismatch |
+| Leading/trailing control characters in returned gamertag could pass strip-based matching and reach terminal output | Reject control characters before identity output/storage |
+| Authenticated but malformed encrypted payload could raise an unsanitized schema error or accept a boolean schema version | Enforce exact schema/type and map malformed payload failures to fixed StorageError without raw exception context |
+| Windows ACL helper inherited the process's encryption-key/token environment unnecessarily | Pass only required OS environment and private path/control fields; canary test proves secret variables excluded |
+| Windows PowerShell 5.1 UTF-8 BOM configuration was rejected | Read UTF-8 with optional BOM; offline regression covers that format |
+| Disabled check did not validate fields needed for future enabled mode | Add `check --validate-enabled`, proving the disabled file remains unchanged and no live path is entered |
+| Count-only discovery did not expose an ID to select for the next approved probe | Add optional private `--show-realm-ids` output with default-output privacy tests; no new endpoints |
+| Fixed HTTP category alone hid useful non-secret troubleshooting data | Print numeric status/Retry-After without upstream bodies; exact-output test |
+
+No failing offline tests remain after these fixes. The 14 additional regressions account for the increase from 410 to 424 passing tests. The private Windows guide supplies setup prompts for the app/client ID, explicitly allowed human Discord ID, guild ID and stable Bedrock version; no values were inferred from unavailable screenshots or administrator permissions. A Windows-only DPAPI provisioning procedure is documented but was not executed with real key material. No push, deployment, merge, live OAuth or Realms call was performed during this review.
