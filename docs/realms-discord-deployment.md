@@ -24,7 +24,7 @@ The 45-second observation deadline is after the interaction has been deferred. M
    | `CAPTAIN_REALMS_KEY_ID` | Active key ID matching the existing cache/key map |
    | `CAPTAIN_REALMS_KEYS` | JSON key-ID → Fernet-key map, injected privately |
 
-   Existing encryption, path/ACL checks, single-writer lock, token rotation and Microsoft/Xbox refresh implementation are reused unchanged. Do not put keys or tokens into botdata or environment command arguments. No Windows DPAPI decryption happens inside the bot.
+   Existing encryption, path/ACL checks, single-writer lock, token rotation and Microsoft/Xbox refresh implementation are reused. The one supported in-checkout exception is `<checkout>/.captain-realms-private/tokens`, requiring a private parent and the whole folder ignored/untracked; all other in-checkout locations remain prohibited. See [Apollo preparation](realms-apollo-preparation.md). Do not put keys or tokens into botdata or environment command arguments. No Windows DPAPI decryption happens inside the bot.
 
 2. **Same existing database settings JSON:** add one optional `realms` block to `botdata.settings_json` row 1, under `settings`. No new database tables/columns, schema-version bump, seed replacement or second role/guild source is required. Existing documents without this key remain valid and disabled. Prepare the following values privately, preserving the rest of the existing document:
 

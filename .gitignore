@@ -29,7 +29,8 @@ DailyQuestions.txt
 
 .runtimes/
 
-# Defense in depth only: the Realms store requires a private directory outside this checkout.
+# Only this designated private folder is permitted for in-checkout Realms state.
+/.captain-realms-private/
 *.realms.enc
 oauth.json
 realms.private.json

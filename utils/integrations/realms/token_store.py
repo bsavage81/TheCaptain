@@ -1,4 +1,4 @@
-"""Single-writer authenticated-encrypted storage outside the source checkout.
+"""Single-writer authenticated-encrypted storage with a private Apollo exception.
 
 Call open/close using a context manager. Local service identity is trusted; ACLs
 and encryption cannot protect against an attacker controlling that identity.
@@ -17,6 +17,39 @@ from .errors import ProtocolError, StorageBusy, StorageError
 from .models import Identity, Secret, StoredAccount, text
 
 MAX_CACHE_BYTES = 65536
+CHECKOUT_ROOT = Path(__file__).resolve().parents[3]
+APOLLO_PRIVATE_DIRECTORY = ".captain-realms-private"
+
+
+def validate_location(directory):
+    """Only the designated, ignored, untracked Apollo folder may be in checkout.
+
+    Check again at each storage boundary so removing ignore protection or tracking
+    a private file makes subsequent use fail closed. Git output is never logged.
+    """
+    root = CHECKOUT_ROOT.resolve()
+    if not directory.is_relative_to(root):
+        return
+    if directory != root / APOLLO_PRIVATE_DIRECTORY / "tokens":
+        raise StorageError()
+    private_permissions(directory.parent)
+    failed = False
+    environment = {k: v for k, v in os.environ.items() if k.upper() in {
+        "PATH", "SYSTEMROOT", "WINDIR", "HOME", "USERPROFILE", "TEMP", "TMP",
+    }}
+    environment["GIT_OPTIONAL_LOCKS"] = "0"
+    try:
+        common = dict(capture_output=True, stdin=subprocess.DEVNULL, timeout=5, env=environment,
+                      creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        ignored = subprocess.run(["git", "-C", str(root), "check-ignore", "--quiet", "--",
+                                  APOLLO_PRIVATE_DIRECTORY + "/"], **common)
+        tracked = subprocess.run(["git", "-C", str(root), "ls-files", "-z", "--",
+                                  APOLLO_PRIVATE_DIRECTORY + "/"], **common)
+        failed = ignored.returncode != 0 or tracked.returncode != 0 or bool(tracked.stdout)
+    except (OSError, subprocess.SubprocessError):
+        failed = True
+    if failed:
+        raise StorageError()
 
 
 class TokenStore(Protocol):
@@ -100,10 +133,7 @@ class EncryptedTokenStore:
             invalid = True
         if invalid:
             raise StorageError()
-        # All persistent cache data stays outside the repository/source sync tree.
-        root = Path(__file__).resolve().parents[3]
-        if self.directory == root or self.directory.is_relative_to(root):
-            raise StorageError()
+        validate_location(self.directory)
         self.path = self.directory / "account.realms.enc"
 
     def __repr__(self):
@@ -117,6 +147,7 @@ class EncryptedTokenStore:
         handle = None
         try:
             reject_links(self.directory)
+            validate_location(self.directory)
             if not self.directory.exists():
                 # Parent must be provisioned by the operator, never create a path tree implicitly.
                 self.directory.mkdir(mode=0o700)
@@ -173,6 +204,7 @@ class EncryptedTokenStore:
         if self._lock is None:
             raise StorageError()
         reject_links(self.directory)
+        validate_location(self.directory)
         private_permissions(self.directory)
         reject_links(self.path)
 
