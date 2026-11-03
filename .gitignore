@@ -28,3 +28,8 @@ DailyQuestions.txt
 .database-backups/
 
 .runtimes/
+
+# Defense in depth only: the Realms store requires a private directory outside this checkout.
+*.realms.enc
+oauth.json
+realms.private.json

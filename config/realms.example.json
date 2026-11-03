@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "realms": {
+    "enabled": false,
+    "client_id": "",
+    "auth_owner_ids": [],
+    "guild_id": 0,
+    "account_ref": "",
+    "expected_gamertag": "",
+    "client_version": "",
+    "selected_realm_id": null
+  }
+}

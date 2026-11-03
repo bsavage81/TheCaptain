@@ -1,0 +1,237 @@
+"""Single-writer authenticated-encrypted storage outside the source checkout.
+
+Call open/close using a context manager. Local service identity is trusted; ACLs
+and encryption cannot protect against an attacker controlling that identity.
+"""
+import json
+import os
+from pathlib import Path
+import stat
+import subprocess
+import tempfile
+from typing import Protocol
+
+from cryptography.fernet import Fernet, InvalidToken
+
+from .errors import StorageBusy, StorageError
+from .models import Identity, Secret, StoredAccount, text
+
+MAX_CACHE_BYTES = 65536
+
+
+class TokenStore(Protocol):
+    def open(self): ...
+    def close(self): ...
+    def load(self) -> StoredAccount | None: ...
+    def save(self, account: StoredAccount): ...
+
+
+def reject_links(path):
+    """Reject existing symlink/junction/reparse components, not just the leaf."""
+    for component in (path, *path.parents):
+        if component.is_symlink() or (hasattr(component, "is_junction") and component.is_junction()):
+            raise StorageError()
+        if component.exists() and getattr(component.lstat(), "st_file_attributes", 0) & 0x400:
+            raise StorageError()
+
+
+def _windows_permissions(path, create=False):
+    # Fixed script; path is passed via environment, never interpolated in shell text.
+    # Only current identity, SYSTEM and local Administrators may have allow entries.
+    script = r"""$ErrorActionPreference = 'Stop'
+ $p = $env:CAPTAIN_PRIVATE_PATH
+ $sid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User
+ if ($env:CAPTAIN_PRIVATE_CREATE -eq '1') {
+   $acl = [System.IO.Directory]::GetAccessControl($p)
+   $acl.SetAccessRuleProtection($true, $false)
+   foreach ($rule in @($acl.Access)) { [void]$acl.RemoveAccessRuleSpecific($rule) }
+   $rule = [System.Security.AccessControl.FileSystemAccessRule]::new($sid, 'FullControl', 'ContainerInherit,ObjectInherit', 'None', 'Allow')
+   $acl.AddAccessRule($rule)
+   [System.IO.Directory]::SetAccessControl($p, $acl)
+ }
+ if ([System.IO.Directory]::Exists($p)) { $acl = [System.IO.Directory]::GetAccessControl($p) }
+ else { $acl = [System.IO.File]::GetAccessControl($p) }
+ $trusted = @($sid.Value, 'S-1-5-18', 'S-1-5-32-544')
+ if ($acl.GetOwner([System.Security.Principal.SecurityIdentifier]).Value -notin $trusted) { exit 1 }
+ foreach ($rule in $acl.Access) {
+   if ($rule.AccessControlType -eq 'Allow' -and $rule.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value -notin $trusted) { exit 1 }
+ }
+"""
+    environment = dict(os.environ, CAPTAIN_PRIVATE_PATH=str(path), CAPTAIN_PRIVATE_CREATE="1" if create else "0")
+    result = subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script],
+                            env=environment, capture_output=True, timeout=15, check=False,
+                            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    if result.returncode:
+        raise StorageError()
+
+
+def private_permissions(path, *, create=False):
+    failed = False
+    try:
+        if os.name == "nt":
+            _windows_permissions(path, create)
+        else:
+            mode = path.stat()
+            if mode.st_uid != os.getuid() or stat.S_IMODE(mode.st_mode) & 0o077:
+                raise StorageError()
+    except (OSError, subprocess.SubprocessError):
+        failed = True
+    if failed:
+        raise StorageError()
+
+
+class EncryptedTokenStore:
+    def __init__(self, directory, binding, keys, active_key_id):
+        candidate = Path(directory).absolute()
+        reject_links(candidate)
+        self.directory = candidate.resolve()
+        self.binding = dict(binding)
+        self.active_key_id = active_key_id
+        self._lock = None
+        self._keys = {}
+        invalid = False
+        try:
+            if not keys or active_key_id not in keys or any(not isinstance(k, str) or not k or len(k) > 64 for k in keys):
+                raise ValueError()
+            self._keys = {name: Fernet(key.value.encode("ascii")) for name, key in keys.items()}
+        except (ValueError, TypeError, AttributeError, UnicodeError):
+            invalid = True
+        if invalid:
+            raise StorageError()
+        # All persistent cache data stays outside the repository/source sync tree.
+        root = Path(__file__).resolve().parents[3]
+        if self.directory == root or self.directory.is_relative_to(root):
+            raise StorageError()
+        self.path = self.directory / "account.realms.enc"
+
+    def __repr__(self):
+        return "EncryptedTokenStore(<private>)"
+
+    def open(self):
+        if self._lock is not None:
+            raise StorageBusy()
+        failed = False
+        busy = False
+        handle = None
+        try:
+            reject_links(self.directory)
+            if not self.directory.exists():
+                # Parent must be provisioned by the operator, never create a path tree implicitly.
+                self.directory.mkdir(mode=0o700)
+                private_permissions(self.directory, create=True)
+            private_permissions(self.directory)
+            lock_path = self.directory / "writer.lock"
+            reject_links(lock_path)
+            fd = os.open(lock_path, os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0), 0o600)
+            handle = os.fdopen(fd, "r+b", buffering=0)
+            private_permissions(lock_path)
+            if os.name == "nt":
+                import msvcrt
+                if os.fstat(handle.fileno()).st_size == 0:
+                    handle.write(b"0")
+                handle.seek(0)
+                try:
+                    msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+                except OSError:
+                    busy = True
+            else:
+                import fcntl
+                try:
+                    fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                except OSError:
+                    busy = True
+            if not busy:
+                self._lock = handle
+        except (OSError, ValueError, subprocess.SubprocessError):
+            failed = True
+        except StorageError:
+            if handle:
+                handle.close()
+            raise
+        if failed or busy:
+            if handle:
+                handle.close()
+            if busy:
+                raise StorageBusy()
+            raise StorageError()
+        return self
+
+    def close(self):
+        if self._lock:
+            self._lock.close()  # OS releases the lock even after an unclean process exit.
+            self._lock = None
+
+    def __enter__(self):
+        return self.open()
+
+    def __exit__(self, *args):
+        self.close()
+
+    def _check(self):
+        if self._lock is None:
+            raise StorageError()
+        reject_links(self.directory)
+        private_permissions(self.directory)
+        reject_links(self.path)
+
+    def load(self):
+        self._check()
+        if not self.path.exists():
+            return None
+        invalid = False
+        account = None
+        try:
+            private_permissions(self.path)
+            if self.path.stat().st_size > MAX_CACHE_BYTES or self.path.stat().st_nlink != 1:
+                raise ValueError()
+            with self.path.open("rb") as stream:
+                outer = json.loads(stream.read(MAX_CACHE_BYTES + 1))
+            key = self._keys[outer["key_id"]]
+            document = json.loads(key.decrypt(outer["ciphertext"].encode("ascii")))
+            if document["version"] != 1 or document["binding"] != self.binding or document["key_id"] != outer["key_id"]:
+                raise ValueError()
+            revoked = document["revoked"]
+            xuid = text(document["xuid"])
+            if type(revoked) is not bool or not xuid.isascii() or not xuid.isdigit():
+                raise ValueError()
+            account = StoredAccount(Secret(text(document["refresh"])), Identity(xuid, text(document["gamertag"])), revoked)
+        except (ValueError, KeyError, TypeError, OSError, UnicodeError, InvalidToken):
+            invalid = True
+        if invalid:
+            raise StorageError()
+        return account
+
+    def save(self, account):
+        self._check()
+        invalid = False
+        temporary = None
+        try:
+            document = dict(version=1, binding=self.binding, key_id=self.active_key_id,
+                            refresh=account.refresh.value, xuid=account.identity.xuid,
+                            gamertag=account.identity.gamertag, revoked=account.revoked)
+            ciphertext = self._keys[self.active_key_id].encrypt(json.dumps(document).encode()).decode("ascii")
+            payload = json.dumps({"key_id": self.active_key_id, "ciphertext": ciphertext}).encode()
+            if len(payload) > MAX_CACHE_BYTES:
+                raise ValueError()
+            fd, temporary = tempfile.mkstemp(prefix="rotation-", suffix=".realms.enc", dir=self.directory)
+            with os.fdopen(fd, "wb") as stream:
+                private_permissions(Path(temporary))
+                stream.write(payload)
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temporary, self.path)
+            temporary = None
+            # Persist directory entry on POSIX; Windows replace is atomic on same volume.
+            if os.name != "nt":
+                fd = os.open(self.directory, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+                try:
+                    os.fsync(fd)
+                finally:
+                    os.close(fd)
+        except (ValueError, TypeError, OSError, subprocess.SubprocessError):
+            invalid = True
+        finally:
+            if temporary is not None:
+                Path(temporary).unlink(missing_ok=True)
+        if invalid:
+            raise StorageError()

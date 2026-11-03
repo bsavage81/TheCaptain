@@ -1,0 +1,102 @@
+"""Bounded, fixed-host aiohttp boundary. No raw upstream error escapes."""
+import asyncio
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
+import json
+import math
+import re
+
+import aiohttp
+
+from .errors import AccessDenied, ProtocolError, TransportError
+
+AUTHORITY = "https://login.microsoftonline.com/consumers/oauth2/v2.0"
+USER_AUTH = "https://user.auth.xboxlive.com/user/authenticate"
+XSTS_AUTH = "https://xsts.auth.xboxlive.com/xsts/authorize"
+REALMS_HOST = "https://pocket.realms.minecraft.net"
+REALMS_RP = REALMS_HOST + "/"
+XBOX_RP = "http://xboxlive.com"
+AUTH_URLS = {AUTHORITY + "/devicecode", AUTHORITY + "/token", USER_AUTH, XSTS_AUTH}
+MAX_RESPONSE_BYTES = 1024 * 1024
+
+
+def retry_delay(value, now=None):
+    if not isinstance(value, str):
+        return None
+    try:
+        delay = float(value)
+        if not math.isfinite(delay):
+            return None
+    except ValueError:
+        try:
+            delay = (parsedate_to_datetime(value) - (now or datetime.now(timezone.utc))).total_seconds()
+        except (ValueError, TypeError, OverflowError):
+            return None
+    return max(0.0, delay)
+
+
+@dataclass(frozen=True)
+class Response:
+    status: int
+    body: object = field(repr=False)
+    retry_after: float | None = None
+
+
+class AiohttpTransport:
+    """Only the service owns this session. No proxy env, cookies, tracing or redirects."""
+    def __init__(self, *, selected_realm_id=None, session_factory=aiohttp.ClientSession):
+        self._factory = session_factory
+        self._session = None
+        self._semaphore = asyncio.Semaphore(2)
+        self._reads = {REALMS_HOST + p for p in ("/worlds", "/activities/live/players", "/invites/pending", "/invites/count/pending")}
+        if selected_realm_id is not None:
+            if not isinstance(selected_realm_id, str) or not re.fullmatch(r"[1-9][0-9]{0,19}", selected_realm_id):
+                raise AccessDenied()
+            self._reads.add(REALMS_HOST + "/worlds/" + selected_realm_id)
+
+    async def __aenter__(self):
+        self._session = self._factory(
+            timeout=aiohttp.ClientTimeout(total=30, connect=10, sock_read=20),
+            cookie_jar=aiohttp.DummyCookieJar(), trust_env=False,
+        )
+        return self
+
+    async def __aexit__(self, *args):
+        if self._session is not None:
+            await self._session.close()
+            self._session = None
+
+    async def request(self, method, url, *, headers=None, form=None, payload=None):
+        if not ((method == "POST" and url in AUTH_URLS) or
+                (method == "GET" and url in self._reads)):
+            raise AccessDenied()
+        if self._session is None:
+            raise TransportError()
+        failed = False
+        result = None
+        try:
+            async with self._semaphore:
+                async with self._session.request(method, url, headers=headers, data=form, json=payload,
+                                                 allow_redirects=False) as response:
+                    if 300 <= response.status < 400:
+                        raise ProtocolError()
+                    raw = bytearray()
+                    async for chunk in response.content.iter_chunked(65536):
+                        raw.extend(chunk)
+                        if len(raw) > MAX_RESPONSE_BYTES:
+                            raise ProtocolError()
+                    malformed = False
+                    try:
+                        body = json.loads(raw)
+                    except (ValueError, UnicodeError):
+                        malformed = True
+                    if malformed:
+                        raise ProtocolError()
+                    result = Response(response.status, body, retry_delay(response.headers.get("Retry-After")))
+        except (aiohttp.ClientError, OSError, TimeoutError, ValueError):
+            failed = True
+        # Raise outside except: raw errors can contain request headers or body fragments.
+        if failed:
+            raise TransportError()
+        return result
