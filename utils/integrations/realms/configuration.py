@@ -74,3 +74,18 @@ class RealmsConfig:
     def binding(self):
         return {"client_id": self.client_id, "account_ref": self.account_ref,
                 "authority": "consumers-v2", "scopes": "XboxLive.signin offline_access"}
+
+
+def from_bot_settings(settings):
+    """Operational config comes only from botdata; never from the diagnostic file.
+
+    Guild and OP Team are canonical existing bot settings, not duplicated here.
+    Authentication owner IDs remain separate from the role authorized to read.
+    """
+    values = settings.get("realms", {})
+    if not isinstance(values, dict) or "guild_id" in values:
+        raise ConfigurationError()
+    config = RealmsConfig.from_document({"version": 1, "realms": dict(values, guild_id=settings.get("Coastal", 0))})
+    if config.enabled and not config.selected_realm_id:
+        raise ConfigurationError()
+    return config

@@ -44,6 +44,24 @@ def test_seed_captures_owner_settings_without_secrets(document):
     assert "database_password" not in json.dumps(document)
 
 
+def test_optional_realms_update_uses_existing_json_and_preserves_columns(backend, document):
+    from dataclasses import asdict
+    from realms_fakes import config
+    apply(backend, document)
+    values = json.loads(json.dumps(asdict(config())))
+    values.pop("guild_id")
+    with backend.connection_context():
+        columns = {c.name for c in backend.get_columns("botdata")}
+    preview = migrate(backend, set_key="realms", value=values)
+    assert preview["changed_keys"] == ["realms"] and not preview["add_column"]
+    assert apply(backend, set_key="realms", value=values, replace_existing=True)["applied"]
+    with backend.connection_context():
+        assert {c.name for c in backend.get_columns("botdata")} == columns
+        saved = read_database_settings(backend)
+    assert saved["realms"] == values
+    assert saved["CoastalOPTeam"] == document["settings"]["CoastalOPTeam"]
+
+
 def test_migration_preview_and_backup_gate(backend):
     preview = migrate(backend)
     assert preview["add_column"] and not preview["applied"]

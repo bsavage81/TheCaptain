@@ -9,7 +9,7 @@ import json
 import os
 from pathlib import Path
 from peewee import MySQLDatabase, SqliteDatabase
-from utils.configuration import COLUMN, SEED, import_document, validate_document
+from utils.configuration import COLUMN, SEED, OPTIONAL_SETTING_KEYS, import_document, validate_document
 from utils.core_features.__constants import ROOT
 from utils.database.__database import make_database
 
@@ -43,7 +43,7 @@ def migrate(backend, source=None, *, apply=False, backup_verified=False,
         original = backend.execute_sql("SELECT settings_json FROM botdata WHERE id=1").fetchone()[0] if COLUMN in columns else None
         old = validate_document(json.loads(original)) if original is not None else None
         if set_key is not None:
-            if old is None or source is not None or set_key not in old["settings"]:
+            if old is None or source is not None or set_key not in set(old["settings"]) | OPTIONAL_SETTING_KEYS:
                 raise ValueError("Update requires existing settings and one supported key")
             document = json.loads(json.dumps(old))
             document["settings"][set_key] = value

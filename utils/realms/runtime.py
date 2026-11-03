@@ -1,0 +1,151 @@
+"""On-demand observations using the Phase 2 service. No polling or login flow."""
+import asyncio
+from contextlib import AsyncExitStack
+from dataclasses import dataclass
+import json
+import logging
+import math
+import os
+import time
+
+from utils.integrations.realms.configuration import Principal, from_bot_settings
+from utils.integrations.realms.errors import ConfigurationError, HTTPFailure
+from utils.integrations.realms.models import Secret
+from utils.integrations.realms.service import RealmsService
+from utils.integrations.realms.token_store import EncryptedTokenStore
+from utils.integrations.realms.transport import AiohttpTransport
+
+log = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class Observation:
+    realm: object = None
+    activity: object = None
+    realm_available: bool = False
+    activity_available: bool = False
+
+
+def host_store(config, environ):
+    invalid = False
+    try:
+        keys = json.loads(environ.get("CAPTAIN_REALMS_KEYS", ""))
+        directory = environ["CAPTAIN_REALMS_STORE_DIR"]
+        active = environ["CAPTAIN_REALMS_KEY_ID"]
+        if not directory or not isinstance(keys, dict) or not keys or not all(isinstance(v, str) for v in keys.values()):
+            raise ValueError()
+        store = EncryptedTokenStore(directory, config.binding, {k: Secret(v) for k, v in keys.items()}, active)
+    except (KeyError, TypeError, ValueError):
+        invalid = True
+    if invalid:
+        raise ConfigurationError()
+    return store
+
+
+class RealmRuntime:
+    cache_seconds = 60
+    refresh_seconds = 30
+
+    def __init__(self, settings, *, environ=None, store_factory=host_store,
+                 transport_factory=AiohttpTransport, service_factory=RealmsService, monotonic=time.monotonic):
+        self.config = from_bot_settings(settings)
+        self._environ = environ
+        self._store_factory = store_factory
+        self._transport_factory = transport_factory
+        self._service_factory = service_factory
+        self._clock = monotonic
+        self._stack = AsyncExitStack()
+        self._lock = asyncio.Lock()
+        self._tasks = set()
+        self._last_attempt = None
+        self._retry_at = 0
+        self.view = Observation()
+        self.client = None
+        self._closed = False
+
+    async def start(self):
+        if not self.config.enabled or self.client is not None or self._closed:
+            return
+        try:
+            store = self._store_factory(self.config, os.environ if self._environ is None else self._environ)
+            task = asyncio.create_task(asyncio.to_thread(store.open))
+            try:
+                await asyncio.shield(task)
+            except asyncio.CancelledError:
+                try:
+                    await task
+                finally:
+                    await asyncio.to_thread(store.close)
+                raise
+            self._stack.push_async_callback(asyncio.to_thread, store.close)
+            transport = await self._stack.enter_async_context(self._transport_factory(selected_realm_id=self.config.selected_realm_id))
+            service = self._service_factory(self.config, transport, store)
+            self._stack.push_async_callback(service.close)
+            # Internal delegated service identity; OP Team users are never granted auth ownership.
+            self.client = service.client(Principal(self.config.auth_owner_ids[0], self.config.guild_id))
+        except asyncio.CancelledError:
+            await self._stack.aclose()
+            raise
+        except Exception as error:
+            log.warning("Realms initialization unavailable (%s)", type(error).__name__)
+            await self._stack.aclose()
+            self.client = None
+
+    async def observe(self, *, force=False):
+        if self._closed or self.client is None:
+            return self.view, 0
+        task = asyncio.current_task()
+        self._tasks.add(task)
+        try:
+            async with self._lock:
+                if self._closed:
+                    return self.view, 0
+                if self._retry_at > self._clock():
+                    return self.view, math.ceil(self._retry_at - self._clock())
+                age = float("inf") if self._last_attempt is None else self._clock() - self._last_attempt
+                if force and age < self.refresh_seconds:
+                    return self.view, math.ceil(self.refresh_seconds - age)
+                if not force and age < self.cache_seconds:
+                    return self.view, 0
+                self._last_attempt = self._clock()
+                realm, activity = self.view.realm, self.view.activity
+                realm_ok = activity_ok = False
+                try:
+                    async with asyncio.timeout(45):
+                        try:
+                            realm = await self.client.realm()
+                            realm_ok = True
+                        except Exception as error:
+                            log.warning("Realms details unavailable (%s)", type(error).__name__)
+                            self._backoff(error)
+                        if self._retry_at <= self._clock():
+                            try:
+                                snapshot = await self.client.activities()
+                                selected = next((a for a in snapshot.data if a.realm_id == self.config.selected_realm_id), None)
+                                if selected is not None:
+                                    from utils.integrations.realms.models import Snapshot
+                                    activity = Snapshot(selected, snapshot.observed_at)
+                                    activity_ok = True
+                            except Exception as error:
+                                log.warning("Realms activity unavailable (%s)", type(error).__name__)
+                                self._backoff(error)
+                except TimeoutError:
+                    log.warning("Realms observation timed out")
+                self.view = Observation(realm, activity, realm_ok, activity_ok)
+                return self.view, math.ceil(max(0, self._retry_at - self._clock()))
+        finally:
+            self._tasks.discard(task)
+
+    def _backoff(self, error):
+        if isinstance(error, HTTPFailure) and error.retry_after is not None:
+            self._retry_at = max(self._retry_at, self._clock() + error.retry_after)
+
+    async def close(self):
+        self._closed = True
+        tasks = [t for t in self._tasks if t is not asyncio.current_task()]
+        for task in tasks:
+            task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+        await self._stack.aclose()
+        self.client = None
