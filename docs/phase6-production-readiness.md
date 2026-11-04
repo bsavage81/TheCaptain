@@ -1,5 +1,9 @@
 # Phase 6 production readiness and controlled rollout
 
+**Superseded staging decision (November 4):** the owner waived separate staging.
+Use [the live database findings and current approval-gated rollout](phase6-production-database-rollout.md).
+The Docker setup below is retained historical preparation, not an outstanding requirement.
+
 November 3, 2026 (America/Chicago). Branch `codex/realms-phase6`, development
 closeout `712dc7a3462c7e7121205dfb4f4eea196a14da21`.
 

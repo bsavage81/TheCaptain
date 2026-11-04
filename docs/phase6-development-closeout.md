@@ -1,5 +1,8 @@
 # Phase 6 development closeout
 
+Current rollout: [production database inspection and migration preparation](phase6-production-database-rollout.md).
+The owner waived separate staging; backup/recovery and production-action approvals remain required.
+
 Follow-up: [production readiness, isolated MariaDB setup and approval-gated rollout](phase6-production-readiness.md).
 
 November 3, 2026 (America/Chicago). Branch: `codex/realms-phase6`.
