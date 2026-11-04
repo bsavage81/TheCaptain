@@ -3,6 +3,11 @@
 Development branch: `codex/realms-phase6`, based on Phase 5 plus the successful
 Stories investigation. Production remains disabled; no deployment or live imports.
 
+Follow-up: [release validation, excluded-source findings, private identity review and
+precise activation gates](phase6-release-validation.md). That review starts at
+`8f3f525` and supersedes the previously unresolved source descriptions below;
+the original eight-source preview remains a separately scoped historical baseline.
+
 ## Audit before implementation
 
 The existing eight-table Peewee registry already supports canonical player IDs,

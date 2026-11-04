@@ -126,6 +126,17 @@ def test_roster_does_not_prove_current_membership(backend):
     assert p.seasons.get().realm_status == "unknown"
 
 
+def test_concatenated_archive_headers_are_not_player_records():
+    headers = ["Timestamp", "Gamertag"]
+    rows = [headers, ["6/14/2017 12:00:00", "SyntheticPlayer"],
+            [" timestamp ", " GAMERTAG "], ["6/14/2017 12:00:00", "SyntheticPlayer"],
+            ["6/15/2017 12:00:00", "Gamertag"]]
+    records = parse_rows(rows, season=3, source="synthetic_legacy", header_row=1)
+    assert len(records) == 3
+    assert registry.record_key(records[0]) == registry.record_key(records[1])
+    assert records[2]["gamertag"] == "Gamertag"  # actual dated name is retained
+
+
 def test_bad_and_missing_ids_require_review():
     for raw in ("1.23456789012346E+17", "1234", "12.0", "<@123456789012345678>"):
         data = parse_rows([["Gamertag", "Discord Long ID"], ["Synthetic", raw]], season=10,
