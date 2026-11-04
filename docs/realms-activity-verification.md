@@ -1,12 +1,17 @@
 # Phase 6: Stories activity semantics and controlled verification
 
 November 3, 2026 (America/Chicago). Branch `codex/realms-phase6`, baseline `72c30ab`.
-Scope: existing Stories evidence, synthetic tests and an approval-ready diagnostic
-plan. **No new live API/authentication calls, production writes, deployment, restart,
-main merge, profile activation, Realm/Timeline changes or archive work occurred.**
+Initial scope: existing Stories evidence, synthetic tests and an approval-ready
+diagnostic plan. The separately authorized short D1 execution is recorded below.
+**No production writes, deployment, restart, main merge, profile activation,
+Realm/Timeline changes or archive work occurred.**
 Paused local historical-review files are outside this change and are not committed.
 
 ## Readiness decision
+
+Short D1 update: access and an online/offline transition were verified, but all
+three Stories snapshots were identical. The system remains unsuitable for confirmed
+session durations or production playtime statistics; see the execution record below.
 
 **Ready to propose a limited external diagnostic, not ready to activate a production
 playtime/statistics pilot.** Account access and interval structure are verified from
@@ -151,8 +156,8 @@ retries, redirects, device login and rejection-triggered renewal, and use existi
 TLS verification, no proxy/cookies, a 30-second request timeout and 1 MiB body cap.
 Do not sample via `/playerprofiles activity` or the runtime's one-hour history cache:
 five cached observations cannot measure publication changes. Do not change the
-running bot's cache/polling/allowlists. No live sampler was implemented/executed here;
-its exact route/budget enforcement must be reviewed before any approved run.
+running bot's cache/polling/allowlists. At proposal time no live sampler had been
+implemented/executed; the reviewed short-run sampler and execution are recorded below.
 
 ### Read schedule
 
@@ -224,7 +229,133 @@ one normal client join/leave and no production changes. A production statistics 
 would need a separate decision after evidence review, MariaDB staging and identity/
 privacy gates. This document does not grant any of those approvals.
 
-Until new evidence exists: online representation, active versus post-disconnect
+After short D1: online representation, active versus post-disconnect
 updates, end sentinels, rounding, publication delay, revision rules, overlapping-session
 semantics and retention remain **unknown**. The existing observed-activity model
 can retain qualified evidence; it cannot yet certify historical playtime.
+
+## Short D1 execution record — November 3, 2026 (America/Chicago)
+
+The participant consented, confirmed existing Timeline visibility and authorized
+one additional Xbox profile GET to verify the supplied test identity. The original
+20-minute proposal was shortened at the participant's request. Only aggregate
+results are retained here; no identifiers, raw timestamps or individual histories
+are recorded. No historical source work or production functionality was changed.
+
+### Partial attempt and explicit continuation approval
+
+The first short attempt used four authentication POSTs, one profile GET and two
+live GETs, all HTTP 200. Both live reads reported the participant absent. Its
+60-second active-state cutoff stopped the sampler before the participant's join
+confirmation reached the operator. That cutoff was too aggressive for client/chat
+coordination. There were **zero Stories reads** and no valid session comparison.
+The process closed, discarded its in-memory tokens/identity mapping and removed
+its isolated credential copy; the encrypted source remained unchanged.
+
+The participant subsequently returned offline. Before any additional network
+requests, the operator presented the revised sampler and exact additional budget.
+The participant explicitly approved up to four additional established authentication
+POSTs, one additional profile GET, three live GETs and three Stories GETs. The Realm
+reads stayed within the original D1 total caps. This was a separately coordinated
+continuation join/departure, not uninterrupted observation of the first attempt.
+
+The continuation waited for identity verification and the participant's independent
+world-loaded confirmation **before starting any timed Realm reads**. It prompted
+departure at approximately +140 seconds, then recorded the participant's return-to-menu
+confirmation. The control-file receipt was +188.1 seconds; this is an operator/chat
+receipt, not the actual client or server disconnect time. No exact client event log
+or clock synchronization measurement was collected.
+
+### Preparation and safety validation
+
+The disposable sampler and its synthetic tests remain under ignored
+`.test-tmp/d1-short/`; they are not bot features or an unattended recurring job.
+Review covered fixed route/audience allowlists, per-route attempt caps, at least
+60 seconds between Realm GET starts, no redirects, bounded response bodies,
+fail-closed identity/presence checks and no automatic retries. aiohttp's implicit
+connection retry was explicitly disabled. No extra endpoints, refresh-on-error,
+interactive login or scope changes were allowed. The continuation had a six-minute
+hard observation window and a bounded pre-start coordination wait.
+
+**11 offline synthetic tests passed; Ruff F checks passed.** The tests use fake
+HTTP sessions and block external network access. A sandboxed Windows asyncio run
+stalled and was stopped; the same tests passed outside the sandbox with local
+loopback available. These tests verify sampler guards, not service semantics.
+
+Authentication used the established TheCaptain4322 implementation and a protected,
+isolated copy of the existing encrypted local diagnostic store. Refresh persistence
+was confined to that copy. The source store was not opened for writing, and no
+running bot token store was accessed. The continuation's source SHA-256 comparison
+confirmed unchanged encrypted bytes; the isolated directory was removed on exit.
+Identity links and raw interval pairs were held in process memory only and discarded.
+
+### Sanitized observations
+
+Times below are approximate elapsed **response completion** times after the timed
+start, not player event timestamps. The two active Stories samples were between
+the independent arrival confirmation and departure prompt; presence snapshots are
+not simultaneous with Stories reads.
+
+| Elapsed seconds | Read | HTTP | Aggregate result |
+| --- | --- | --- | --- |
+| 0.4 | Live | 200 | Consenting participant online |
+| 60.7 | Stories | 200 | 13 intervals; all `s,e` integers |
+| 120.8 | Stories | 200 | Same 13 interval pairs; no value changes |
+| 180.4 | Live | 200 | Consenting participant offline |
+| 240.5 | Stories | 200 | Same 13 interval pairs; no value changes |
+| 300.4 | Live | 200 | Consenting participant still offline |
+
+Stories had the expected object envelope `result.activity`, whose identifier keys
+map to arrays of interval objects. Only the consenting identity's `(s,e)` pairs
+were retained for comparison; other players' data was discarded. All 13 sampled
+starts and ends were positive integers divisible by 3,600, and all ends exceeded
+their respective starts. One end exceeded observation time by more than five minutes;
+no starts did. That anomaly remained unchanged after independently confirmed departure.
+Every successive pair-set comparison reported **zero additions, zero removals and
+zero same-start/changed-end candidates**. GET latencies were approximately
+0.17–0.55 seconds. No exact anomalous value or player-level dates are retained.
+
+Continuation totals: four authentication POSTs, one profile GET, three live GETs,
+three Stories GETs; every response HTTP 200. Combined with the partial attempt:
+**eight authentication POSTs, two profile GETs, five live GETs and three Stories
+GETs**, covered by the original authorization and explicit continuation approval.
+No other live requests or retries were made in these two attempts.
+
+### Interpretation and remaining gates
+
+- **Access and transition verified:** existing credentials accessed both read
+  endpoints, and independent client reports plus live snapshots establish an
+  online-to-offline transition. Sparse snapshots do not give exact connection times.
+- **Active representation unresolved:** no changed pair could be attributed to the
+  controlled session. A persistent far-future end is an anomaly, not a proven active
+  sentinel; it also existed in the post-departure snapshot. Keep it quarantined.
+- **No updates observed:** pairs were identical across two active reads and one
+  post-departure read. This does not prove publication only on disconnect, absence
+  of the session, or a particular cache/aggregation policy. Request cache-control
+  cannot guarantee origin freshness or bypass server-side aggregation.
+- **Publication delay unmeasured:** the last Stories read was about 100 seconds after
+  the departure prompt and 60 seconds after the first offline live snapshot. Without
+  an identifiable session interval or offline Stories baseline, there is no valid
+  numerical publication-lag estimate or lower bound. Longer follow-up was not authorized.
+- **Hour alignment observed, rounding rule unknown:** every sampled timestamp was
+  hour-aligned. This supports concern about coarse time representation but does not
+  establish floor/ceiling rules, exact precision or general behavior for all players.
+- **Overlap/revisions unresolved:** no pair changes were observed. Overlap counts,
+  raw date extrema, current-session matching and correction direction were not
+  measured by this sampler. No new retention range was established; the earlier
+  approximately 19.458-day envelope remains a separate observation, not a guarantee.
+
+No parser or statistics change is justified by D1. Preserve anomalous-value
+quarantine, independent live presence and the distinction between observed interval
+coverage and confirmed sessions. Existing union coverage cannot safely be labelled
+historical playtime, connection count or exact live duration. Do not use D1 to
+activate profiles, announcements, leaderboards or production statistics.
+
+**Not ready for a production playtime/statistics pilot.** A further diagnostic would
+need separately approved participant/session coordination, endpoint/authentication
+budgets and a longer observation window, with a genuine offline Stories baseline
+and independently timed client events. It should explicitly test coarse boundaries,
+identify which interval belongs to the session, and measure delayed updates and
+overlap without presuming sentinel semantics. No further calls are authorized by
+this document. Production rollout still requires the existing staging, privacy,
+identity and activation gates plus separate user approval.

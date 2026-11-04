@@ -249,6 +249,15 @@ step. No account switch, opt-in change or new consent is justified by this resul
 
 ## Sources and confidence
 
+The subsequently authorized short D1 comparison is recorded in
+[activity verification](realms-activity-verification.md#short-d1-execution-record--november-3-2026-americachicago).
+Three Stories reads returned HTTP 200 and identical interval pairs across an
+independently observed online/offline transition. Every sampled timestamp was
+hour-aligned; one implausibly future end persisted after departure. No interval
+could be attributed to the controlled session, so actual start/end semantics and
+publication delay remain unverified. Plausible finite intervals must not be called
+confirmed completed sessions or used to activate production playtime statistics.
+
 Public references retrieved November 3, 2026. The authorized live follow-up
 used four authentication POSTs and one Stories GET as recorded above.
 
