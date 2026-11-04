@@ -4,7 +4,7 @@ import random
 
 from .errors import AccessDenied, HTTPFailure, ProtocolError
 from .models import Activity, Invitation, Realm, Snapshot, members, realm_id, text, utcnow
-from .transport import REALMS_HOST
+from .transport import REALMS_HOST, STORIES_HOST
 
 
 class RealmsClient:
@@ -23,6 +23,9 @@ class RealmsClient:
         allowed = {"/worlds", "/activities/live/players", "/invites/pending", "/invites/count/pending"}
         if self.config.selected_realm_id:
             allowed.add("/worlds/" + self.config.selected_realm_id)
+        stories_path = "/api/v1.0/worlds/" + (self.config.selected_realm_id or "") + "/stories/playeractivity"
+        if self.config.selected_realm_id:
+            allowed.add(stories_path)
         if method != "GET" or path not in allowed:
             raise AccessDenied()
         token = await self.authorization(self.principal)
@@ -30,10 +33,14 @@ class RealmsClient:
         attempts = 0
         while True:
             self.config.authorize(self.principal)
-            response = await self.transport.request("GET", REALMS_HOST + path, headers={
+            headers = {
                 "Authorization": token.authorization.value, "Client-Version": self.config.client_version,
                 "User-Agent": "MCPE/UWP", "Accept": "application/json",
-            })
+            }
+            if path == stories_path:
+                headers["Cache-Control"] = "no-cache, no-store"
+            response = await self.transport.request("GET", (STORIES_HOST if path == stories_path else REALMS_HOST) + path,
+                                                    headers=headers)
             if response.status == 200:
                 return response.body
             if response.status == 401 and not renewed:
@@ -49,6 +56,15 @@ class RealmsClient:
                 attempts += 1
                 continue
             raise HTTPFailure(response.status, response.retry_after)
+
+    async def stories(self):
+        """Selected-Realm observed history; never claims exact connection semantics."""
+        if not self.config.selected_realm_id:
+            raise AccessDenied()
+        from .stories import parse_stories
+        data = await self.request("GET", "/api/v1.0/worlds/" + self.config.selected_realm_id + "/stories/playeractivity")
+        observed = self.clock()
+        return Snapshot(parse_stories(data, observed), observed)
 
     async def list_realms(self):
         data = await self.request("GET", "/worlds")

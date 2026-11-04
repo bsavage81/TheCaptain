@@ -64,9 +64,13 @@ class Players(commands.Cog):
     async def cog_load(self):
         checkins.validate(self.settings)
         def preflight():
-            missing = {m._meta.table_name for m in MODELS} - set(db.get_tables())
+            required = list(MODELS)
+            if self.settings.get("realm_history_enabled", False):
+                from .activity_models import RealmActivity
+                required.append(RealmActivity)
+            missing = {m._meta.table_name for m in required} - set(db.get_tables())
             if missing:
-                raise ValueError("Registry tables missing; review migrations.player_registry before enabling profiles")
+                raise ValueError("Registry/history tables missing; review the explicit migrations before activation")
         await database(preflight)
         self.view = CheckInView(self)
         self.bot.add_view(self.view)
@@ -172,6 +176,61 @@ class Players(commands.Cog):
             run = DiscoveryRun.select().order_by(-DiscoveryRun.id).first()
             return json.loads(run.report) if run else "No completed discovery yet."
         await private_report(interaction, await database(report))
+
+    @profiles.command(name="preview", description="Preview historical identities without staging or importing")
+    @op_team()
+    async def preview_history(self, interaction: discord.Interaction):
+        await self.scope(interaction)
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        async with self.setup_lock:
+            guild = interaction.guild
+            if not guild.chunked:
+                await guild.chunk(cache=True)
+            result = await self.discovery.run()
+            summary = await database(lambda: registry.preview(result["records"], list(guild.members)))
+            await private_report(interaction, {"preview": summary, "source_count": len(result["sources"]),
+                "source_issue_count": len(result["issues"]), "complete": not result["issues"]})
+
+    @profiles.command(name="xboxlink", description="Link a reviewed Xbox identity to an existing profile")
+    @op_team()
+    async def xbox_link(self, interaction: discord.Interaction, player_id: int, xuid: str,
+                        evidence: str, confirm: bool):
+        await self.scope(interaction)
+        await interaction.response.defer(ephemeral=True)
+        if not confirm:
+            await private_report(interaction, "Review independent identity evidence, then explicitly confirm.")
+            return
+        from .activity import link_xbox
+        try:
+            linked = await database(lambda: link_xbox(player_id, xuid, actor=interaction.user.id, evidence=evidence))
+            await private_report(interaction, {"linked": True, "previously_unmatched_activity_linked": linked})
+        except Exception as error:
+            log.warning("xbox_identity_link_failed error=%s", type(error).__name__)
+            await private_report(interaction, "Link blocked. Review the profile and verified identity conflicts privately.")
+
+    @profiles.command(name="activity", description="Preview or explicitly retain private observed Stories intervals")
+    @op_team()
+    async def import_activity(self, interaction: discord.Interaction, confirm: bool = False):
+        await self.scope(interaction)
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        if not self.settings.get("realm_history_enabled", False):
+            await private_report(interaction, "Realm history is disabled; migration and activation review required.")
+            return
+        from .activity import ingest
+        try:
+            realms = self.bot.get_cog("RealmCommands")
+            if realms is None:
+                raise ValueError("Realm runtime unavailable")
+            snapshot = await realms.runtime.stories()
+            summary = {"intervals": len(snapshot.data),
+                "quarantined": sum(i.status == "quarantined" for i in snapshot.data),
+                "observed_at": snapshot.observed_at.isoformat(), "confirmed_sessions": False}
+            if confirm:
+                summary["import"] = await database(lambda: ingest(snapshot, realms.runtime.config.selected_realm_id))
+            await private_report(interaction, summary)
+        except Exception as error:
+            log.warning("stories_history_unavailable error=%s", type(error).__name__)
+            await private_report(interaction, "History unavailable; no activity or absence was fabricated. Retry after the history cooldown.")
 
     @profiles.command(name="reconcile", description="Page through pending, conflicting or unmatched sources")
     @op_team()

@@ -8,12 +8,13 @@ from utils.players.models import MODELS
 from utils.core_features.__constants import ROOT
 
 
-def migrate(backend, *, apply=False, backup_verified=False):
+def migrate(backend, *, apply=False, backup_verified=False, models=None):
+    models = MODELS if models is None else models
     db.initialize(backend)
     with backend.connection_context():
         existing = set(backend.get_tables())
         missing = []
-        for model in MODELS:
+        for model in models:
             name = model._meta.table_name
             if name not in existing:
                 missing.append(name)
@@ -38,7 +39,7 @@ def migrate(backend, *, apply=False, backup_verified=False):
                 raise ValueError("Verify an independent backup before applying registry DDL")
             if isinstance(backend, MySQLDatabase):
                 backend.execute_sql("SET SESSION default_storage_engine=InnoDB")
-            backend.create_tables(MODELS, safe=True)
+            backend.create_tables(models, safe=True)
         return {"missing_tables": missing, "applied": apply,
                 "plan": "Create missing registry tables only; preserve all existing data"}
 

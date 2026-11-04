@@ -48,6 +48,10 @@ def parse_rows(rows, *, season, source, header_row, start_row=1, trusted_ids=Fal
         tag = get("gamertag")
         if not tag:
             continue
+        # Legacy archive tabs concatenate exports with embedded header rows.
+        # Two identity-column labels identify a header, not a player application.
+        if tag.casefold() in {"gamertag", "what is your gamertag?"} and get("application_date").casefold() == "timestamp":
+            continue
         raw_id = get("discord_id")
         discord_id = stable_id(raw_id)
         date = application_date(get("application_date"))

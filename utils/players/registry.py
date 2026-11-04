@@ -23,6 +23,10 @@ def record_key(record):
 
 def matches(record, members=()):
     """Return confident target only for independently verified stable identifiers."""
+    if record.get("xuid_verified"):
+        from utils.integrations.realms.profiles import valid_xuid
+        if not valid_xuid(record.get("xuid")):
+            return {"state": "conflict", "candidates": []}
     targets = set()
     for kind, field in (("discord_id", Player.discord_id), ("xuid", Player.xuid)):
         value = record.get(kind)
@@ -56,6 +60,56 @@ def matches(record, members=()):
         if names & known or any(SequenceMatcher(None, a, b).ratio() >= .85 for a in names for b in known if b):
             suggestions.append(f"discord:{member.id}")
     return {"state": "review" if suggestions or record.get("issues") else "new", "candidates": suggestions}
+
+
+def preview(records, members=()):
+    """Read-only preview: no staging, profiles, history or discovery-run writes."""
+    records = list(records)
+    members = tuple(members)
+    counts = dict(total_records=len(records), existing_matches=0, proposed_profiles=0,
+                  ambiguous_identities=0, conflicting_links=0, manual_review=0,
+                  duplicate_source_records=0, potential_duplicate_name_groups=0)
+    keys, names, stable_links = set(), {}, {}
+    seasons = {}
+    for record in records:
+        key = record_key(record)
+        counts["duplicate_source_records"] += key in keys
+        keys.add(key)
+        seasons[str(record["season"])] = seasons.get(str(record["season"]), 0) + 1
+        for kind in ("gamertag", "discord_name"):
+            value = str(record.get(kind, "")).strip().casefold()
+            if value:
+                names.setdefault((kind, value), set()).add(key)
+        for kind, other in (("discord_id", "xuid"), ("xuid", "discord_id")):
+            if record.get(kind) and record.get(kind + "_verified") and record.get(other) and record.get(other + "_verified"):
+                stable_links.setdefault((kind, str(record[kind])), set()).add(str(record[other]))
+    duplicate_keys = set().union(*(v for v in names.values() if len(v) > 1)) if names else set()
+    counts["potential_duplicate_name_groups"] = sum(len(v) > 1 for v in names.values())
+    proposals = set()
+    for record in records:
+        match = matches(record, members)
+        if any(len(stable_links.get((kind, str(record.get(kind))), ())) > 1
+               for kind in ("discord_id", "xuid") if record.get(kind + "_verified")):
+            match = {"state": "conflict"}
+        ambiguous = match["state"] == "review" or record_key(record) in duplicate_keys
+        if match["state"] == "conflict":
+            counts["conflicting_links"] += 1
+        elif match["state"] == "confident":
+            counts["existing_matches"] += 1
+        elif not ambiguous:
+            # A stable verified identity can propose one profile across season records.
+            identity = next(((k, str(record[k])) for k in ("discord_id", "xuid")
+                             if record.get(k) and record.get(k + "_verified")), None)
+            proposals.add(identity or ("source", record_key(record)))
+        counts["ambiguous_identities"] += ambiguous
+        counts["manual_review"] += ambiguous or match["state"] == "conflict" or match["state"] == "new"
+    counts["proposed_profiles"] = len(proposals)
+    counts["by_season"] = seasons
+    counts["records_with_source_issues"] = sum(bool(r.get("issues")) for r in records)
+    counts["records_with_verified_discord_id"] = sum(bool(r.get("discord_id") and r.get("discord_id_verified")) for r in records)
+    counts["records_with_verified_xuid"] = sum(bool(r.get("xuid") and r.get("xuid_verified")) for r in records)
+    counts["all_imports_require_approval"] = True
+    return counts
 
 
 def stage(records, members=()):
@@ -150,6 +204,9 @@ def import_record(record_id):
             if value and record.get(f"{kind}_verified"):
                 if getattr(player, kind) not in (None, value):
                     raise ValueError("Cannot overwrite verified identity")
+                if player.identities.where((Identity.kind == kind) & Identity.verified &
+                                           (Identity.value != str(value))).exists():
+                    raise ValueError("Cannot replace verified identity history")
                 setattr(player, kind, value)
         for kind in ("discord_name", "gamertag"):
             value = record.get(kind, "")
