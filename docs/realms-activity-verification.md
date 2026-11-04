@@ -1,5 +1,9 @@
 # Phase 6: Stories activity semantics and controlled verification
 
+Final scope: [Phase 6 development closeout](phase6-development-closeout.md).
+Live observations remain primary; Stories is supporting coarse activity evidence.
+Automatic corroboration and completed-session statistics are deferred, not implemented.
+
 November 3, 2026 (America/Chicago). Branch `codex/realms-phase6`, baseline `72c30ab`.
 Initial scope: existing Stories evidence, synthetic tests and an approval-ready
 diagnostic plan. The separately authorized short D1 execution is recorded below.
