@@ -76,6 +76,16 @@ def test_missing_destination_stops_before_credentials_or_connection(monkeypatch,
     secret_reader.assert_not_called()
 
 
+def test_unprotected_parent_refused_before_creating_directory(monkeypatch, tmp_path):
+    monkeypatch.setattr(backup, 'private_permissions', Mock(side_effect=ValueError('Unprotected parent')))
+    execute = Mock(side_effect=AssertionError('No Git/subdirectory before parent validation'))
+    monkeypatch.setattr(backup.subprocess, 'run', execute)
+    with pytest.raises(ValueError, match='Unprotected parent'):
+        backup.prepare_destination(tmp_path)
+    execute.assert_not_called()
+    assert not list(tmp_path.iterdir())
+
+
 def test_parent_before_child_and_cycles_refused():
     tables = {'child': {'foreign_keys':[{'referenced_table_name':'parent'}]},
               'parent': {'foreign_keys':[]}}

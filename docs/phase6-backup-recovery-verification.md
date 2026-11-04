@@ -164,6 +164,18 @@ accept this documented residual risk for the single additive migration, or requi
 provider/recovery verification first. Either way, no production DDL is authorized
 by creating or verifying these files.
 
+### Legacy Git-tracking privacy finding
+
+The final tracking audit found **five pre-existing legacy backup/checksum/verification
+files already tracked despite `.gitignore`**. None of today's artifacts was tracked.
+The legacy files were removed from the branch's tracked set with `git rm --cached`,
+not deleted locally. Their bytes were hash-compared before/after and preserved.
+The existing backup parent directory ACL was hardened, all five legacy file ACLs
+then verified private, and the backup tool now also refuses an unprotected parent.
+This prevents those files remaining in the new branch snapshot; it **does not erase
+prior Git history**. Historical removal would be a separately approved repository
+privacy/history-cleanup operation; no force-push or history rewrite was attempted.
+
 ## Exact production migration approval request — not executed
 
 Please review the final CI-green Phase 6 commit and the unchanged artifact
@@ -194,8 +206,8 @@ backup, stop and refresh/review it rather than rely on stale recovery evidence.
 Deployment and profile activation still need separate approvals after that checkpoint.
 
 Offline validation: **389 passed, 1 platform skip** across the Phase 4/6 regressions,
-audit and backup tests. After the final isolation guard change, all **51 focused
-audit/backup tests passed** again. Ruff F and compilation checks passed. The only
+audit and backup tests. After the final isolation/parent-permission guard changes,
+all **52 focused audit/backup tests passed**. Ruff F and compilation checks passed. The only
 warning was the existing discord.py `audioop` deprecation. These tests prove software
 guards/serialization behavior, not a database restore. Final branch CI must also
 pass before selecting the production migration revision.

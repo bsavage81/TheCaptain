@@ -145,6 +145,7 @@ def prepare_destination(parent):
     reject_links(parent)
     if not parent.is_dir():
         raise ValueError('Existing backup parent required')
+    private_permissions(parent)
     root = parent / ('phase6-' + datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ') + '-' + uuid.uuid4().hex[:12])
     # Refuse an unignored location before any secret or database value is read.
     check = subprocess.run(['git', 'check-ignore', '--quiet', str(root/'backup.json')], capture_output=True)
