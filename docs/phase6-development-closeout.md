@@ -1,5 +1,7 @@
 # Phase 6 development closeout
 
+Follow-up: [production readiness, isolated MariaDB setup and approval-gated rollout](phase6-production-readiness.md).
+
 November 3, 2026 (America/Chicago). Branch: `codex/realms-phase6`.
 Reviewed starting revision: `05d6a49400f6fddfcc35616206fd3fee6aee09b1`.
 

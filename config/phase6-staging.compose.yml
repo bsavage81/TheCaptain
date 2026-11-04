@@ -1,0 +1,35 @@
+# Invoke with an explicit --env-file; never use the repository .env.
+x-stage: &stage
+  image: ${CAPTAIN_STAGE_IMAGE:?Supply an approved mariadb digest}
+  restart: "no"
+  labels:
+    org.thecaptain.phase6: synthetic-only
+  environment:
+    MARIADB_DATABASE: captain_phase6_stage
+    MARIADB_USER: captain_phase6_stage
+    MARIADB_PASSWORD: ${CAPTAIN_STAGE_PASSWORD:?Supply a fresh staging-only password}
+    MARIADB_ROOT_PASSWORD: ${CAPTAIN_STAGE_ROOT_PASSWORD:?Supply a fresh staging-only root password}
+  ports:
+    - "127.0.0.1::3306"
+  tmpfs:
+    - /var/lib/mysql:size=536870912
+  networks: [stage]
+  healthcheck:
+    test: [CMD, healthcheck.sh, --connect, --innodb_initialized]
+    interval: 5s
+    timeout: 5s
+    retries: 24
+
+services:
+  db:
+    <<: *stage
+    container_name: captain-phase6-stage-db
+    hostname: captain-phase6-stage-db
+  restore:
+    <<: *stage
+    container_name: captain-phase6-stage-restore
+    hostname: captain-phase6-stage-restore
+
+networks:
+  stage:
+    internal: true
