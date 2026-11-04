@@ -1,5 +1,8 @@
 # Phase 6 final backup and recovery verification
 
+Subsequent action: [the owner approved the restore limitation and the one-table migration succeeded](phase6-activity-migration-execution.md).
+The backup remains the intact eleven-table **pre-migration** snapshot; do not rerun the CREATE.
+
 November 4, 2026 (America/Chicago). Branch `codex/realms-phase6`, starting revision
 `c8d6f687e433d0558a025dea4e180a3138bfcbe9`.
 

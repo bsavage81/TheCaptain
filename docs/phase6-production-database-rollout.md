@@ -1,5 +1,9 @@
 # Phase 6: existing production database rollout preparation
 
+Execution update: [the separately approved single-table migration succeeded](phase6-activity-migration-execution.md).
+Production now has twelve tables; deployment and feature activation remain unapproved.
+The migration preparation below is historical procedure, not an instruction to rerun DDL.
+
 Current backup status: [complete backup and integrity verification, with untested-restore limitation](phase6-backup-recovery-verification.md).
 The earlier backup-gap findings below describe the pre-backup state; no migration has run.
 
