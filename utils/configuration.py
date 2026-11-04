@@ -29,7 +29,7 @@ guide_answer guide_answer_match guide_cells logo_url profiles_enabled checkin_en
 checkin_announcements_enabled checkin_reminders_enabled checkin_timezone checkin_season
 checkin_season_name checkin_channel_id checkin_staff_channel_id checkin_eligible_role_id
 checkin_inactive_role_id checkin_reminder_days profile_sources""".split())
-OPTIONAL_SETTING_KEYS = {"realms", "realm_panel"}
+OPTIONAL_SETTING_KEYS = {"realms", "realm_panel", "realm_history_enabled"}
 
 
 def load_bootstrap(environ=None):

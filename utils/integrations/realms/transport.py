@@ -15,6 +15,7 @@ AUTHORITY = "https://login.microsoftonline.com/consumers/oauth2/v2.0"
 USER_AUTH = "https://user.auth.xboxlive.com/user/authenticate"
 XSTS_AUTH = "https://xsts.auth.xboxlive.com/xsts/authorize"
 REALMS_HOST = "https://pocket.realms.minecraft.net"
+STORIES_HOST = "https://frontend.realms.minecraft-services.net"
 REALMS_RP = REALMS_HOST + "/"
 XBOX_RP = "http://xboxlive.com"
 PROFILE_BATCH = "https://profile.xboxlive.com/users/batch/profile/settings"
@@ -55,6 +56,7 @@ class AiohttpTransport:
             if not isinstance(selected_realm_id, str) or not re.fullmatch(r"[1-9][0-9]{0,19}", selected_realm_id):
                 raise AccessDenied()
             self._reads.add(REALMS_HOST + "/worlds/" + selected_realm_id)
+            self._reads.add(STORIES_HOST + "/api/v1.0/worlds/" + selected_realm_id + "/stories/playeractivity")
 
     async def __aenter__(self):
         self._session = self._factory(

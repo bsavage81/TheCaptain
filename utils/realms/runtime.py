@@ -65,6 +65,10 @@ class RealmRuntime:
         self.names = None
         self._failures = 0
         self._closed = False
+        self._history_enabled = settings.get("realm_history_enabled", False) is True
+        self._history_retry_at = 0
+        self._history_failures = 0
+        self._history_snapshot = None
 
     async def start(self):
         if not self.config.enabled or self.client is not None or self._closed:
@@ -157,6 +161,42 @@ class RealmRuntime:
         if isinstance(error, HTTPFailure) and error.retry_after is not None:
             delay = max(delay, error.retry_after)
         self._retry_at = max(self._retry_at, self._clock() + delay)
+
+    async def stories(self):
+        """Explicit private history requests share auth/lock, never the panel loop."""
+        from utils.integrations.realms.errors import AccessDenied
+        if not self._history_enabled or self._closed or self.client is None:
+            raise AccessDenied()
+        task = asyncio.current_task()
+        self._tasks.add(task)
+        try:
+            async with self._lock:
+                if self._closed:
+                    raise AccessDenied()
+                if self._retry_at > self._clock():
+                    raise HTTPFailure(429, self._retry_at - self._clock())
+                if self._history_retry_at > self._clock():
+                    if self._history_snapshot is not None:
+                        return self._history_snapshot
+                    raise HTTPFailure(429, self._history_retry_at - self._clock())
+                # Gate before I/O; callers cannot hammer a failing service.
+                self._history_retry_at = self._clock() + 3600
+                try:
+                    async with asyncio.timeout(45):
+                        snapshot = await self.client.stories()
+                except Exception as error:
+                    self._history_failures += 1
+                    delay = min(3600, 60 * 2 ** min(self._history_failures - 1, 6))
+                    if isinstance(error, HTTPFailure) and error.retry_after is not None:
+                        delay = max(delay, error.retry_after)
+                    self._history_retry_at = self._clock() + delay
+                    raise
+                self._history_failures = 0
+                self._history_snapshot = snapshot
+                self._history_retry_at = self._clock() + 3600
+                return snapshot
+        finally:
+            self._tasks.discard(task)
 
     async def close(self):
         self._closed = True

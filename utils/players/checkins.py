@@ -8,9 +8,11 @@ from .models import CheckIn, Participation, Period, Player, Reminder, utcnow
 
 def validate(settings):
     ZoneInfo(settings.get("checkin_timezone", "America/Chicago"))
-    for key in ("profiles_enabled", "checkin_enabled", "checkin_announcements_enabled", "checkin_reminders_enabled"):
+    for key in ("profiles_enabled", "checkin_enabled", "checkin_announcements_enabled", "checkin_reminders_enabled", "realm_history_enabled"):
         if key in settings and type(settings[key]) is not bool:
             raise ValueError(f"{key} must be a boolean")
+    if settings.get("realm_history_enabled") and not settings.get("profiles_enabled"):
+        raise ValueError("Enable profiles before Realm history")
     if type(settings.get("checkin_season", 10)) is not int or settings.get("checkin_season", 10) < 1:
         raise ValueError("checkin_season must be positive")
     days = settings.get("checkin_reminder_days", [15, 25])
