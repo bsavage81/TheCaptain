@@ -4,6 +4,10 @@ Date: November 3, 2026 (America/Chicago). Code baseline: `a3a8925`;
 Phase 5 documentation: `d1c844c`. Isolated branch:
 `codex/realms-stories-investigation`. Documentation only.
 
+Phase 6 follow-up: [activity semantics, synthetic counterexamples and diagnostic D1](realms-activity-verification.md).
+The one-shot probe below remains the only live evidence. No new live calls were
+made for that follow-up; production activation and exact playtime remain unverified.
+
 ## Result and execution decision
 
 **Verified: one authenticated Stories GET returned HTTP 200 for Coastal Craft
