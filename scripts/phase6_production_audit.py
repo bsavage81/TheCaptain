@@ -23,7 +23,9 @@ FLAGS = ('profiles_enabled', 'checkin_enabled', 'checkin_announcements_enabled',
 
 def readonly_sql(sql):
     statement = sql.strip()
-    controls = {'SET TRANSACTION READ ONLY', 'START TRANSACTION WITH CONSISTENT SNAPSHOT', 'ROLLBACK'}
+    controls = {'SET TRANSACTION READ ONLY',
+                'SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY',
+                'START TRANSACTION WITH CONSISTENT SNAPSHOT', 'ROLLBACK'}
     if statement in controls:
         return
     if (';' in statement or not re.match(r'^(SELECT|SHOW)\b', statement, re.I)
@@ -33,6 +35,30 @@ def readonly_sql(sql):
 
 def quote(name):
     return '`' + name.replace('`', '``') + '`'
+
+
+def backup_visibility(grants, schema):
+    required = {'SELECT', 'SHOW VIEW', 'TRIGGER', 'EVENT', 'SHOW CREATE ROUTINE'}
+    privileges = set()
+    for row in grants:
+        match = re.match(r'GRANT (.*?) ON (.+)\.\* TO ', str(row[0]))
+        if not match:
+            continue
+        scope = match[2]
+        if scope.startswith('`') and scope.endswith('`'):
+            scope = scope[1:-1].replace('``', '`')
+        pattern, index = '', 0
+        while index < len(scope):
+            char = scope[index]
+            if char == '\\' and index+1 < len(scope):
+                index += 1
+                pattern += re.escape(scope[index])
+            else:
+                pattern += '.*' if char == '%' else '.' if char == '_' else re.escape(char)
+            index += 1
+        if scope == '*' or re.fullmatch(pattern, schema):
+            privileges.update(match[1].split(', '))
+    return 'ALL PRIVILEGES' in privileges or required <= privileges
 
 
 def rows(backend, sql, params=()):
@@ -126,7 +152,7 @@ def compare(model, metadata):
     return issues
 
 
-def audit(backend):
+def audit(backend, *, capture_rows=False):
     original = backend.execute_sql
     def guarded(sql, params=None, **kwargs):
         readonly_sql(sql)
@@ -135,7 +161,8 @@ def audit(backend):
     db.initialize(backend)  # Model SQL compilation only; no migration functions called.
     try:
         with backend.connection_context():
-            backend.execute_sql('SET TRANSACTION READ ONLY')
+            backend.execute_sql('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY'
+                                if capture_rows else 'SET TRANSACTION READ ONLY')
             backend.execute_sql('START TRANSACTION WITH CONSISTENT SNAPSHOT')
             try:
                 identity = rows(backend, 'SELECT VERSION() AS version, DATABASE() AS schema_name, '
@@ -144,6 +171,11 @@ def audit(backend):
                                 '@@collation_server AS collation')[0]
                 if identity['schema_name'] != backend.database or 'MariaDB' not in identity['version']:
                     raise ValueError('Database identity mismatch')
+                if capture_rows:
+                    # Avoid claiming complete object inventory under metadata-limited grants.
+                    grants = backend.execute_sql('SHOW GRANTS').fetchall()
+                    if not backup_visibility(grants, backend.database):
+                        raise ValueError('Complete backup requires confirmed schema-wide visibility')
                 tables = rows(backend, 'SELECT TABLE_NAME, ENGINE, TABLE_COLLATION, TABLE_TYPE '
                               'FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() ORDER BY TABLE_NAME')
                 inventory = {}
@@ -171,6 +203,14 @@ def audit(backend):
                         'AND k.TABLE_NAME=r.TABLE_NAME WHERE k.TABLE_SCHEMA=DATABASE() AND k.TABLE_NAME=%s '
                         'AND k.REFERENCED_TABLE_NAME IS NOT NULL', (table,))
                     metadata['row_count'] = rows(backend, 'SELECT COUNT(*) AS count FROM ' + quote(table))[0]['count']
+                    if capture_rows:
+                        if str(item['engine']).casefold() != 'innodb':
+                            raise ValueError('Consistent backup requires InnoDB')
+                        cursor = backend.execute_sql('SELECT * FROM ' + quote(table))
+                        metadata['data_columns'] = [c[0] for c in cursor.description]
+                        metadata['data_rows'] = cursor.fetchall()
+                        if len(metadata['data_rows']) != metadata['row_count']:
+                            raise ValueError('Snapshot row counts differ')
                 issues, missing = [], []
                 for model in MODELS_ALL:
                     table = model._meta.table_name
@@ -191,11 +231,28 @@ def audit(backend):
                 flags = {k: {'present': k in settings, 'value': settings.get(k, False)} for k in FLAGS}
                 if any(type(v['value']) is not bool or v['value'] for v in flags.values()):
                     issues.append('New feature flags are enabled or malformed; owner review required')
+                objects = {}
+                if capture_rows:
+                    objects = {kind: rows(backend, query) for kind,query in {
+                        'routines': 'SELECT ROUTINE_NAME FROM information_schema.ROUTINES WHERE ROUTINE_SCHEMA=DATABASE()',
+                        'events': 'SELECT EVENT_NAME FROM information_schema.EVENTS WHERE EVENT_SCHEMA=DATABASE()'
+                    }.items()}
+                    if triggers or any(objects.values()) or any(t['kind'] != 'BASE TABLE' for t in inventory.values()):
+                        raise ValueError('Additional objects require supported full backup review')
+                    objects.update(triggers=triggers, views=[])
+                    after = rows(backend, 'SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE()')
+                    if {r['table_name'] for r in after} != set(inventory):
+                        raise ValueError('Schema changed during snapshot')
+                    for table, metadata in inventory.items():
+                        if rows(backend, 'SHOW CREATE TABLE ' + quote(table))[0]['create table'] != metadata['ddl']:
+                            raise ValueError('Table definition changed during snapshot')
                 return {'server_version': identity['version'], 'sql_mode': identity['sql_mode'],
                         'server_charset': identity['charset'], 'server_collation': identity['collation'],
                         'private_target_sha256': hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest(),
                         'tables': inventory, 'missing_phase6_tables': missing, 'incompatibilities': issues,
                         'flags': flags, 'triggers': triggers,
+                        'additional_objects': objects,
+                        'snapshot_isolation': 'REPEATABLE READ explicitly requested' if capture_rows else 'server default',
                         'settings_sha256': hashlib.sha256(settings_row[0]['settings_json'].encode()).hexdigest(),
                         'migration_ledger_tables': [t for t in inventory if re.search('migrat|schema_version', t, re.I)],
                         'production_writes': False}

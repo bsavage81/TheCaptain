@@ -1,5 +1,8 @@
 # Phase 6: existing production database rollout preparation
 
+Current backup status: [complete backup and integrity verification, with untested-restore limitation](phase6-backup-recovery-verification.md).
+The earlier backup-gap findings below describe the pre-backup state; no migration has run.
+
 November 4, 2026 (America/Chicago). Reviewed branch `codex/realms-phase6`, starting
 revision `bb73acd48ed43b0129b3b715c62389861c47e490`.
 

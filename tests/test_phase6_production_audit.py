@@ -66,6 +66,7 @@ def test_reads_and_only_read_transaction_controls_allowed():
     for sql in ['SELECT VERSION()', 'SHOW CREATE TABLE `captain_player`',
                 'SET TRANSACTION READ ONLY', 'START TRANSACTION WITH CONSISTENT SNAPSHOT', 'ROLLBACK']:
         readonly_sql(sql)
+    readonly_sql('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY')
     assert quote('a`b') == '`a``b`'
 
 
