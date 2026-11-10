@@ -57,6 +57,8 @@ class AiohttpTransport:
                 raise AccessDenied()
             self._reads.add(REALMS_HOST + "/worlds/" + selected_realm_id)
             self._reads.add(STORIES_HOST + "/api/v1.0/worlds/" + selected_realm_id + "/stories/playeractivity")
+            from .metrics import live_path
+            self._reads.add(STORIES_HOST + live_path(selected_realm_id))
 
     async def __aenter__(self):
         self._session = self._factory(

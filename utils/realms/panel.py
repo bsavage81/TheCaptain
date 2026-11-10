@@ -27,6 +27,11 @@ def validate_panel(value, guild):
 
 class PanelRepository:
     """Only update the optional panel block in the existing singleton JSON column."""
+    def __init__(self, key="realm_panel"):
+        if key not in {"realm_panel", "realm_metrics_panel"}:
+            raise ValueError("Invalid panel key")
+        self.key = key
+
     def save(self, value, guild):
         from utils.database.__database import db
         from utils.configuration import validate_document
@@ -35,9 +40,9 @@ class PanelRepository:
             row = db.execute_sql("SELECT settings_json FROM botdata WHERE id=1 FOR UPDATE").fetchone()
             document = json.loads(row[0])
             if value is None:
-                document["settings"].pop("realm_panel", None)
+                document["settings"].pop(self.key, None)
             else:
-                document["settings"]["realm_panel"] = value
+                document["settings"][self.key] = value
             validate_document(document)
             db.execute_sql("UPDATE botdata SET settings_json=%s WHERE id=1", (json.dumps(document),))
 
@@ -138,10 +143,12 @@ def panel_embed(view, sessions, interval, *, now=None, storage_ok=True):
 
 
 class PanelController:
+    setting_key = "realm_panel"
+
     def __init__(self, bot, runtime, *, repository=None):
         self.bot, self.runtime = bot, runtime
-        self.repository = repository or PanelRepository()
-        self.config = bot.settings.get("realm_panel")
+        self.repository = repository or PanelRepository(self.setting_key)
+        self.config = bot.settings.get(self.setting_key)
         validate_panel(self.config, bot.settings.get("Coastal"))
         self.lock = asyncio.Lock()
         self.sessions = Sessions(runtime.config.selected_realm_id) if hasattr(runtime, "config") else None
@@ -167,9 +174,12 @@ class PanelController:
         await asyncio.to_thread(self.repository.save, value, self.bot.settings["Coastal"])
         self.config = value
         if value is None:
-            self.bot.settings.pop("realm_panel", None)
+            self.bot.settings.pop(self.setting_key, None)
         else:
-            self.bot.settings["realm_panel"] = value
+            self.bot.settings[self.setting_key] = value
+
+    def render(self, view, interval):
+        return panel_embed(view, self.sessions, interval, storage_ok=self.storage_ok)
 
     async def update_sessions(self, view):
         store = self.runtime.store
@@ -223,7 +233,7 @@ class PanelController:
                 message = await self.resolve()
                 view, _ = await self.runtime.observe(force=manual, scheduled=not manual)
                 await self.update_sessions(view)
-                embed = panel_embed(view, self.sessions, self.config["interval_seconds"], storage_ok=self.storage_ok)
+                embed = self.render(view, self.config["interval_seconds"])
                 value = embed.to_dict()
                 if value != self.last_embed:
                     await message.edit(embed=embed, allowed_mentions=discord.AllowedMentions.none())
@@ -261,7 +271,7 @@ class PanelController:
                 await self.save(None)
             view, _ = await self.runtime.observe()
             await self.update_sessions(view)
-            embed = panel_embed(view, self.sessions, interval, storage_ok=self.storage_ok)
+            embed = self.render(view, interval)
             message = await channel.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
             try:
                 await self.save(dict(guild_id=channel.guild.id, channel_id=channel.id, message_id=message.id, interval_seconds=interval))

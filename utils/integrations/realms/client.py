@@ -26,6 +26,8 @@ class RealmsClient:
         stories_path = "/api/v1.0/worlds/" + (self.config.selected_realm_id or "") + "/stories/playeractivity"
         if self.config.selected_realm_id:
             allowed.add(stories_path)
+            from .metrics import live_path
+            allowed.add(live_path(self.config.selected_realm_id))
         if method != "GET" or path not in allowed:
             raise AccessDenied()
         token = await self.authorization(self.principal)
@@ -39,7 +41,8 @@ class RealmsClient:
             }
             if path == stories_path:
                 headers["Cache-Control"] = "no-cache, no-store"
-            response = await self.transport.request("GET", (STORIES_HOST if path == stories_path else REALMS_HOST) + path,
+            frontend = path == stories_path or path.startswith("/api/v1.0/telemetry/")
+            response = await self.transport.request("GET", (STORIES_HOST if frontend else REALMS_HOST) + path,
                                                     headers=headers)
             if response.status == 200:
                 return response.body
@@ -56,6 +59,13 @@ class RealmsClient:
                 attempts += 1
                 continue
             raise HTTPFailure(response.status, response.retry_after)
+
+    async def metrics(self):
+        from .metrics import Metrics, live_path
+        if not self.config.selected_realm_id:
+            raise AccessDenied()
+        body = await self.request("GET", live_path(self.config.selected_realm_id))
+        return Snapshot(Metrics.parse(body), self.clock())
 
     async def stories(self):
         """Selected-Realm observed history; never claims exact connection semantics."""

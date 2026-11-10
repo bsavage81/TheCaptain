@@ -29,7 +29,7 @@ guide_answer guide_answer_match guide_cells logo_url profiles_enabled checkin_en
 checkin_announcements_enabled checkin_reminders_enabled checkin_timezone checkin_season
 checkin_season_name checkin_channel_id checkin_staff_channel_id checkin_eligible_role_id
 checkin_inactive_role_id checkin_reminder_days profile_sources""".split())
-OPTIONAL_SETTING_KEYS = {"realms", "realm_panel", "realm_history_enabled"}
+OPTIONAL_SETTING_KEYS = {"realms", "realm_panel", "realm_metrics_panel", "realm_history_enabled"}
 
 
 def load_bootstrap(environ=None):
@@ -65,6 +65,9 @@ def validate_document(document):
     if "realm_panel" in config:
         from utils.realms.panel import validate_panel
         validate_panel(config["realm_panel"], config.get("Coastal"))
+    if "realm_metrics_panel" in config:
+        from utils.realms.panel import validate_panel
+        validate_panel(config["realm_metrics_panel"], config.get("Coastal"))
     for key, value in document["legacy_settings"].items():
         if key == "BotType":
             if str(value).upper() != "STABLE":
