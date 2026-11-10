@@ -69,6 +69,10 @@ class RealmRuntime:
         self._history_retry_at = 0
         self._history_failures = 0
         self._history_snapshot = None
+        self._metrics_snapshot = None
+        self._metrics_retry_at = 0
+        self._metrics_available = False
+        self._metrics_failures = 0
 
     async def start(self):
         if not self.config.enabled or self.client is not None or self._closed:
@@ -161,6 +165,40 @@ class RealmRuntime:
         if isinstance(error, HTTPFailure) and error.retry_after is not None:
             delay = max(delay, error.retry_after)
         self._retry_at = max(self._retry_at, self._clock() + delay)
+
+    async def metrics(self):
+        """On-demand Pro polling; shares auth, serialization, and shutdown tracking."""
+        if self._closed or self.client is None:
+            return None, False
+        task = asyncio.current_task()
+        self._tasks.add(task)
+        try:
+            async with self._lock:
+                if self._closed:
+                    return self._metrics_snapshot, False
+                if self._clock() < self._metrics_retry_at:
+                    return self._metrics_snapshot, self._metrics_available
+                self._metrics_retry_at = self._clock() + 15
+                try:
+                    async with asyncio.timeout(45):
+                        self._metrics_snapshot = await self.client.metrics()
+                    self._metrics_available = True
+                    self._metrics_failures = 0
+                    self._metrics_retry_at = self._clock() + 15
+                except Exception as error:
+                    self._metrics_available = False
+                    self._metrics_failures += 1
+                    delay = min(900, 30 * 2 ** min(self._metrics_failures - 1, 5))
+                    if isinstance(error, HTTPFailure):
+                        if error.status in {401, 403}:
+                            delay = 3600
+                        if error.retry_after is not None:
+                            delay = max(delay, error.retry_after)
+                    self._metrics_retry_at = self._clock() + delay
+                    log.warning("Realm Pro metrics unavailable (%s)", type(error).__name__)
+                return self._metrics_snapshot, self._metrics_available
+        finally:
+            self._tasks.discard(task)
 
     async def stories(self):
         """Explicit private history requests share auth/lock, never the panel loop."""

@@ -69,7 +69,8 @@ def test_name_cache_unicode_bound_and_auxiliary_kind_isolation(tmp_path):
             cache.load_gamertags()
 
 
-def test_panel_database_update_preserves_other_settings_and_schema(monkeypatch):
+@pytest.mark.parametrize("key", ["realm_panel", "realm_metrics_panel"])
+def test_panel_database_update_preserves_other_settings_and_schema(monkeypatch, key):
     from utils.database import __database
     document = json.loads(SEED.read_text())
     original = json.loads(json.dumps(document))
@@ -82,11 +83,11 @@ def test_panel_database_update_preserves_other_settings_and_schema(monkeypatch):
     backend.execute_sql.return_value = cursor
     monkeypatch.setattr(__database, "db", backend)
     panel = dict(guild_id=guild, channel_id=123, message_id=456, interval_seconds=15)
-    PanelRepository().save(panel, guild)
+    PanelRepository(key).save(panel, guild)
     sql, params = backend.execute_sql.call_args.args
     assert sql == "UPDATE botdata SET settings_json=%s WHERE id=1"
     updated = json.loads(params[0])
-    assert updated["settings"].pop("realm_panel") == panel
+    assert updated["settings"].pop(key) == panel
     assert updated == original
     assert "FOR UPDATE" in backend.execute_sql.call_args_list[0].args[0]
     cursor.fetchone.return_value = (json.dumps(dict(original, settings=dict(original["settings"], realm_panel=panel))),)

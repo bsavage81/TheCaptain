@@ -5,6 +5,7 @@ from discord.ext import commands
 
 from .runtime import RealmRuntime
 from .panel import PanelController
+from .metrics import MetricsController
 
 
 def permitted(settings, interaction):
@@ -65,18 +66,22 @@ def render(view, kind, cooldown=0):
 class RealmCommands(commands.Cog):
     realm = app_commands.Group(name="realm", description="Coastal Craft Realm observations", guild_only=True)
     panel = app_commands.Group(name="panel", description="Manage the live Realm status panel", parent=realm)
+    metrics_panel = app_commands.Group(name="metrics", description="Manage the live Realms Pro metrics panel", parent=realm)
 
     def __init__(self, bot, *, runtime=None):
         self.bot = bot
         self.runtime = runtime if runtime is not None else RealmRuntime(bot.settings)
         self.panels = PanelController(bot, self.runtime)
+        self.metrics_panels = MetricsController(bot, self.runtime)
 
     async def cog_load(self):
         await self.runtime.start()
         if hasattr(self.bot, "wait_until_ready"):
             self.panels.start()
+            self.metrics_panels.start()
 
     async def cog_unload(self):
+        await self.metrics_panels.close()
         await self.panels.close()
         await self.runtime.close()
 
@@ -101,6 +106,38 @@ class RealmCommands(commands.Cog):
     @panel.command(name="create", description="Create or relocate the live panel to this channel")
     async def panel_create(self, interaction: discord.Interaction):
         await self.manage_panel(interaction, "create")
+
+    async def manage_metrics(self, interaction, action):
+        if not permitted(self.bot.settings, interaction):
+            await interaction.response.send_message("Realm commands require the Coastal OP Team role in Coastal Craft.", ephemeral=True)
+            return
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        if action == "create":
+            try:
+                url = await self.metrics_panels.create(interaction.channel)
+            except RuntimeError:
+                await interaction.followup.send("Realms Pro metrics are unavailable to the Captain account. No metrics panel was posted. Owner access may be required.", ephemeral=True)
+                return
+            response = "Live metrics panel ready: " + url
+        elif action == "remove":
+            await self.metrics_panels.remove()
+            response = "Metrics panel removed; updates stopped."
+        else:
+            ok = await self.metrics_panels.refresh(manual=True)
+            response = "Metrics panel refreshed; upstream cooldowns respected." if ok else "Metrics panel unavailable or cooling down."
+        await interaction.followup.send(response, ephemeral=True, allowed_mentions=discord.AllowedMentions.none())
+
+    @metrics_panel.command(name="create", description="Post a separate auto-updating Pro metrics embed in this channel")
+    async def metrics_create(self, interaction: discord.Interaction):
+        await self.manage_metrics(interaction, "create")
+
+    @metrics_panel.command(name="refresh", description="Refresh the existing Pro metrics panel")
+    async def metrics_refresh(self, interaction: discord.Interaction):
+        await self.manage_metrics(interaction, "refresh")
+
+    @metrics_panel.command(name="remove", description="Remove the Pro metrics panel and stop polling")
+    async def metrics_remove(self, interaction: discord.Interaction):
+        await self.manage_metrics(interaction, "remove")
 
     @panel.command(name="remove", description="Remove the panel and stop its updates")
     async def panel_remove(self, interaction: discord.Interaction):
