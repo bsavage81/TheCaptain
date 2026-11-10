@@ -6,6 +6,7 @@ import logging
 import math
 
 from utils.integrations.realms.profiles import valid_xuid
+from utils.integrations.realms.models import realm_id
 
 import discord
 from discord.ext import tasks
@@ -145,6 +146,7 @@ class PanelController:
         self.lock = asyncio.Lock()
         self.sessions = Sessions(runtime.config.selected_realm_id) if hasattr(runtime, "config") else None
         self.loaded_sessions = False
+        self.session_realm_changed = False
         self.storage_ok = False
         self.message = None
         self.missing = False
@@ -177,12 +179,19 @@ class PanelController:
         try:
             if not self.loaded_sessions:
                 data = await asyncio.to_thread(store.load_panel_sessions)
+                if isinstance(data, dict) and data.get("realm_id") != self.runtime.config.selected_realm_id:
+                    # Validate the old cache before replacing its scope. Never carry
+                    # first-seen times across Realms or conceal malformed storage.
+                    Sessions(realm_id(data.get("realm_id")), data)
+                    data = None
+                    self.session_realm_changed = True
                 self.sessions = Sessions(self.runtime.config.selected_realm_id, data)
                 self.loaded_sessions = True
             candidate = Sessions(self.sessions.realm_id, self.sessions.document())
             changed = candidate.observe(view)
-            if changed:
+            if changed or (self.session_realm_changed and candidate.authoritative(view)):
                 await asyncio.to_thread(store.save_panel_sessions, candidate.document())
+                self.session_realm_changed = False
             self.sessions = candidate
             self.storage_ok = True
         except Exception:
