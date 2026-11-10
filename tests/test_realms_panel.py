@@ -132,6 +132,60 @@ async def test_restart_recovers_existing_message_edits_only_on_change_and_persis
     assert new_message.edit.await_count == 1
 
 
+async def test_realm_change_starts_new_observed_durations_without_carrying_old_players():
+    c, _, _ = controller()
+    current = observation((player(),), 3600)
+    c.runtime.store.load_panel_sessions.return_value = {
+        "realm_id": "43", "active": {"123": current.activity.observed_at.timestamp()-7200,
+                                    "456": current.activity.observed_at.timestamp()-7200},
+        "last_observation": current.activity.observed_at.timestamp()-3600}
+    await c.update_sessions(current)
+    assert c.storage_ok
+    assert c.sessions.active == {"123": current.activity.observed_at.timestamp()}
+    assert c.sessions.realm_id == "42"
+    assert c.runtime.store.save_panel_sessions.call_args.args[0]["realm_id"] == "42"
+
+
+async def test_realm_change_persists_empty_scope_once_after_authoritative_observation():
+    c, _, _ = controller()
+    c.runtime.store.load_panel_sessions.return_value = {"realm_id":"43", "active":{"123":1}, "last_observation":1}
+    await c.update_sessions(observation((), available=False))
+    c.runtime.store.save_panel_sessions.assert_not_called()
+    assert c.session_realm_changed
+    await c.update_sessions(observation((), 10))
+    c.runtime.store.save_panel_sessions.assert_called_once()
+    saved = c.runtime.store.save_panel_sessions.call_args.args[0]
+    assert saved["realm_id"] == "42" and saved["active"] == {}
+    assert not c.session_realm_changed
+    await c.update_sessions(observation((), 20))
+    assert c.runtime.store.save_panel_sessions.call_count == 1
+
+
+@pytest.mark.parametrize("data", [
+    {"realm_id":"invalid", "active":{}, "last_observation":1},
+    {"realm_id":"43", "active":{"123":float('nan')}, "last_observation":1},
+])
+async def test_realm_change_does_not_overwrite_malformed_foreign_cache(data):
+    c, _, _ = controller()
+    c.runtime.store.load_panel_sessions.return_value = data
+    await c.update_sessions(observation((player(),), 10))
+    assert not c.storage_ok
+    c.runtime.store.save_panel_sessions.assert_not_called()
+
+
+async def test_realm_change_storage_failure_retries_scope_save_without_publishing_durations():
+    c, _, _ = controller()
+    c.runtime.store.load_panel_sessions.return_value = {"realm_id":"43", "active":{"123":1}, "last_observation":1}
+    c.runtime.store.save_panel_sessions.side_effect = RuntimeError('synthetic failure')
+    current = observation((player(),), 10)
+    await c.update_sessions(current)
+    assert not c.storage_ok and c.session_realm_changed
+    c.runtime.store.save_panel_sessions.side_effect = None
+    await c.update_sessions(current)
+    assert c.storage_ok and not c.session_realm_changed
+    assert c.sessions.active == {"123":current.activity.observed_at.timestamp()}
+
+
 async def test_deleted_message_stops_until_explicit_create():
     c, message, channel = controller()
     channel.fetch_message.side_effect = discord.NotFound(NS(status=404, reason="missing"), "missing")
