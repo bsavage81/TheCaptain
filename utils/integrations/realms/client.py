@@ -71,6 +71,25 @@ class RealmsClient:
             raise AccessDenied()
         return await self.request("GET", "/api/v1.0/worlds/" + self.config.selected_realm_id + "/stories")
 
+    async def club_story_feed(self):
+        """Read one club page derived from the configured Realm; no post probe."""
+        from .stories_probe import probe_urls
+        from .transport import XBOX_RP
+        urls = probe_urls(await self.story_feed())
+        if urls is None:
+            raise ProtocolError()
+        self.config.authorize(self.principal)
+        token = await self.authorization(self.principal, audience=XBOX_RP)
+        self.config.authorize(self.principal)
+        response = await self.transport.request("GET", urls[1], headers={
+            "Authorization": token.authorization.value,
+            "x-xbl-contract-version": "13", "Accept": "application/json",
+            "Accept-Language": "en-US", "Cache-Control": "no-cache, no-store",
+        })
+        if response.status != 200:
+            raise HTTPFailure(response.status, response.retry_after)
+        return response.body
+
     async def stories_investigation(self):
         """One Realm feed read, then at most two derived Xbox GET probes."""
         from .stories_probe import investigate

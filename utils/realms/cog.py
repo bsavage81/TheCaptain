@@ -189,7 +189,7 @@ class RealmCommands(commands.Cog):
                 if not permissions.view_channel or not can_send or not permissions.embed_links:
                     await interaction.followup.send("I need View Channel, Send Messages, and Embed Links here.", ephemeral=True)
                     return
-                entries, skipped, remaining = render_feed(await self.runtime.story_feed())
+                entries, skipped, remaining = render_feed(await self.runtime.club_story_feed())
                 duplicates = 0
                 for identity, embed in entries:
                     if not permitted(self.bot.settings, interaction):

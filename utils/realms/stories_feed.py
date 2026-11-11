@@ -6,8 +6,7 @@ import discord
 
 from utils.integrations.realms.errors import ProtocolError
 
-TEXT_FIELDS = ('text', 'message', 'content', 'body', 'caption', 'description', 'storyText', 'storyMessage')
-IMAGE_FIELDS = ('screenshots', 'images', 'attachments', 'media', 'screenshot', 'image', 'imageUrl', 'screenshotUrl')
+TEXT_FIELDS = ('ugcCaption', 'itemText', 'description', 'shortDescription')
 
 
 def clean(value, limit):
@@ -37,6 +36,12 @@ def image_url(value):
     try:
         url = urlsplit(value)
         host = (url.hostname or '').lower()
+        # Club activity returns legacy HTTP image URLs on this Xbox CDN.
+        # Preserve the path/query while using its HTTPS equivalent for embeds.
+        if (url.scheme == 'http' and host == 'images-eds.xboxlive.com'
+                and not url.username and not url.password and url.port is None):
+            url = url._replace(scheme='https')
+            value = url.geturl()
         trusted = ('minecraft-services.net', 'minecraft.net', 'xboxlive.com', 'blob.core.windows.net')
         if (url.scheme == 'https' and not url.username and not url.password
                 and url.port in (None, 443)
@@ -48,24 +53,12 @@ def image_url(value):
 
 
 def images(item):
-    found = []
-    def scan(value, depth=0):
-        if depth > 3 or len(found) >= 4:
-            return
-        if isinstance(value, str):
-            url = image_url(value)
-            if url and url not in found:
-                found.append(url)
-        elif isinstance(value, list):
-            for child in value[:20]:
-                scan(child, depth + 1)
-        elif isinstance(value, dict):
-            for key in ('url', 'imageUrl', 'screenshotUrl', 'src', *IMAGE_FIELDS):
-                if key in value:
-                    scan(value[key], depth + 1)
-    for key in IMAGE_FIELDS:
-        scan(item.get(key))
-    return found
+    # Prefer the verified full screenshot; do not substitute a game cover/avatar.
+    for key in ('screenshotUri', 'screenshotThumbnail'):
+        url = image_url(item.get(key))
+        if url:
+            return [url]
+    return []
 
 
 def timestamp(value):
@@ -80,9 +73,9 @@ def timestamp(value):
 
 def render_feed(body):
     """Return (opaque ID, embed) pairs, plus skipped/remaining counts."""
-    if not isinstance(body, dict) or not isinstance(body.get('result'), list):
+    if not isinstance(body, dict) or not isinstance(body.get('activityItems'), list):
         raise ProtocolError()
-    result = body['result']
+    result = body['activityItems']
     if len(result) > 1000:
         raise ProtocolError()
     rendered, skipped, seen = [], 0, set()
@@ -90,7 +83,7 @@ def render_feed(body):
         if not isinstance(item, dict):
             skipped += 1
             continue
-        identity = item.get('id')
+        identity = item.get('feedItemId')
         if not isinstance(identity, str) or not identity or len(identity) > 256:
             skipped += 1
             continue
@@ -103,13 +96,18 @@ def render_feed(body):
             # Avoid publishing IDs, event metadata, or empty placeholder stories.
             skipped += 1
             continue
-        embed = discord.Embed(title='Realm Story', description=text or None, colour=0x55AA55,
-                              timestamp=timestamp(item.get('timestamp')))
-        author = item.get('author')
+        title = 'Realm Screenshot' if item.get('activityItemType') == 'Screenshot' else ('Realm Event' if item.get('contentType') == 'System' else 'Realm Story')
+        embed = discord.Embed(title=title, description=text or None, colour=0x55AA55,
+                              timestamp=timestamp(item.get('date')))
+        author = item.get('authorInfo')
         if isinstance(author, dict):
-            name = author.get('gamertag') or author.get('displayName') or author.get('name')
+            name = author.get('modernGamertag') or author.get('name')
             if isinstance(name, str) and name.strip() and not name.isdecimal():
-                embed.set_author(name=clean(name, 80))
+                suffix = author.get('modernGamertagSuffix')
+                if isinstance(suffix, str) and suffix.isascii() and suffix.isdigit() and len(suffix) <= 8:
+                    name += '#' + suffix
+                avatar = image_url(author.get('imageUrl'))
+                embed.set_author(name=clean(name, 80), **({'icon_url': avatar} if avatar else {}))
         if media:
             embed.set_image(url=media[0])
         if len(media) > 1:

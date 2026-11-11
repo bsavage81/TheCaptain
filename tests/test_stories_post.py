@@ -13,9 +13,10 @@ from utils.realms.stories_feed import render_feed, image_url
 
 
 def feed():
-    return {'result': [{'id': 'private-id', 'timestamp': '2026-11-11T09:00:00Z',
-            'message': 'A new build @everyone', 'author': {'gamertag': 'Builder'},
-            'images': [{'url': 'https://example.blob.core.windows.net/story/image.png'}],
+    return {'activityItems': [{'feedItemId': 'private-id', 'date': '2026-11-11T09:00:00Z',
+            'ugcCaption': 'A new build @everyone', 'authorInfo': {'modernGamertag': 'Builder'},
+            'activityItemType': 'Screenshot', 'contentType': 'Game',
+            'screenshotUri': 'https://images-eds.xboxlive.com/story/image.png',
             'token': 'secret-token', 'xuid': '123456789'}]}
 
 
@@ -37,16 +38,16 @@ def test_renderer_uses_only_explicit_content_and_bounded_embeds():
     assert '@everyone' not in embed.description
     assert embed.author.name == 'Builder' and embed.timestamp.tzinfo
     assert embed.image.url.endswith('image.png')
-    body = feed(); body['result'][0]['message'] = 'x' * 9000
+    body = feed(); body['activityItems'][0]['ugcCaption'] = 'x' * 9000
     assert len(render_feed(body)[0][0][1]) <= 1800
 
 
 def test_unknown_items_and_private_metadata_are_not_dumped():
-    assert render_feed({'result': [{'id': 'a', 'timestamp': 'bad', 'unknown': 'secret', 'xuid': '123'}]}) == ([], 1, 0)
-    assert render_feed({'result': []}) == ([], 0, 0)
+    assert render_feed({'activityItems': [{'feedItemId': 'a', 'date': 'bad', 'unknown': 'secret', 'xuid': '123'}]}) == ([], 1, 0)
+    assert render_feed({'activityItems': []}) == ([], 0, 0)
     with pytest.raises(ProtocolError):
-        render_feed({'result': {'activity': {}}})
-    body = feed(); body['result'] *= 12
+        render_feed({'activityItems': {'activity': {}}})
+    body = feed(); body['activityItems'] *= 12
     entries, skipped, remaining = render_feed(body)
     assert len(entries) == 1 and skipped == 9 and remaining == 2
 
@@ -61,19 +62,19 @@ def test_bad_media_not_embedded(url):
 @pytest.mark.parametrize('guild,roles', [(None, (404,)), (999, (404,)), (202, ())])
 async def test_post_requires_coastal_op_team_before_io(guild, roles):
     ctx = interaction(guild=guild, roles=roles)
-    api = NS(story_feed=AsyncMock())
+    api = NS(club_story_feed=AsyncMock())
     cog = RealmCommands(NS(settings=settings()), runtime=api)
     await RealmCommands.storiespost.callback(cog, ctx)
-    api.story_feed.assert_not_awaited()
+    api.club_story_feed.assert_not_awaited()
     assert ctx.response.send_message.call_args.kwargs['ephemeral']
 
 
 async def test_one_shot_posts_to_invoking_channel_and_guards_duplicates():
     ctx = context()
-    api = NS(story_feed=AsyncMock(return_value=feed()))
+    api = NS(club_story_feed=AsyncMock(return_value=feed()))
     cog = RealmCommands(NS(settings=settings()), runtime=api)
     await RealmCommands.storiespost.callback(cog, ctx)
-    assert api.story_feed.await_count == 1 and ctx.channel.send.await_count == 1
+    assert api.club_story_feed.await_count == 1 and ctx.channel.send.await_count == 1
     assert ctx.channel.send.call_args.kwargs['allowed_mentions'].to_dict()['parse'] == []
     assert ctx.followup.send.call_args.kwargs['ephemeral']
     await RealmCommands.storiespost.callback(cog, ctx)
@@ -84,10 +85,10 @@ async def test_one_shot_posts_to_invoking_channel_and_guards_duplicates():
 async def test_missing_embed_permission_stops_before_realm_io():
     ctx = context()
     ctx.channel.permissions_for = lambda member: NS(view_channel=True, send_messages=True, embed_links=False)
-    api = NS(story_feed=AsyncMock())
+    api = NS(club_story_feed=AsyncMock())
     cog = RealmCommands(NS(settings=settings()), runtime=api)
     await RealmCommands.storiespost.callback(cog, ctx)
-    api.story_feed.assert_not_awaited()
+    api.club_story_feed.assert_not_awaited()
     ctx.channel.send.assert_not_awaited()
 
 
@@ -96,16 +97,16 @@ async def test_revoked_role_after_get_prevents_publication():
     async def read():
         ctx.user.roles = []
         return feed()
-    cog = RealmCommands(NS(settings=settings()), runtime=NS(story_feed=read))
+    cog = RealmCommands(NS(settings=settings()), runtime=NS(club_story_feed=read))
     await RealmCommands.storiespost.callback(cog, ctx)
     ctx.channel.send.assert_not_awaited()
 
 
 async def test_partial_send_failure_reports_count_and_retains_sent_guard():
     ctx = context(); body = feed()
-    body['result'].append(dict(body['result'][0], id='second'))
+    body['activityItems'].append(dict(body['activityItems'][0], feedItemId='second'))
     ctx.channel.send.side_effect = [None, RuntimeError('canary-token')]
-    cog = RealmCommands(NS(settings=settings()), runtime=NS(story_feed=AsyncMock(return_value=body)))
+    cog = RealmCommands(NS(settings=settings()), runtime=NS(club_story_feed=AsyncMock(return_value=body)))
     await RealmCommands.storiespost.callback(cog, ctx)
     message = ctx.followup.send.call_args.args[0]
     assert 'Posted 1' in message and 'canary' not in message and len(cog._stories_sent) == 1
@@ -113,7 +114,7 @@ async def test_partial_send_failure_reports_count_and_retains_sent_guard():
 
 async def test_api_error_sanitized_no_channel_send():
     ctx = context()
-    cog = RealmCommands(NS(settings=settings()), runtime=NS(story_feed=AsyncMock(side_effect=HTTPFailure(403))))
+    cog = RealmCommands(NS(settings=settings()), runtime=NS(club_story_feed=AsyncMock(side_effect=HTTPFailure(403))))
     await RealmCommands.storiespost.callback(cog, ctx)
     assert 'HTTP 403' in ctx.followup.send.call_args.args[0]
     ctx.channel.send.assert_not_awaited()
@@ -129,3 +130,58 @@ async def test_feed_client_reuses_auth_single_get_and_runtime_no_history_writes(
     assert await rt.story_feed() == feed()
     assert rt._history_snapshot is None and not rt._tasks
     await rt.close()
+
+
+async def test_club_posting_reads_two_gets_and_skips_direct_post_endpoint():
+    from utils.integrations.realms.transport import XBOX_RP
+    from test_stories_probe import BODY, probe_urls
+    http = FakeHTTP(Response(200, BODY), Response(200, feed()))
+    api = client(http)
+    assert await api.club_story_feed() == feed()
+    assert len(http.calls) == 2 and all(c[0] == 'GET' for c in http.calls)
+    assert http.calls[1][1] == probe_urls(BODY)[1]
+    assert api.authorization.call_args.kwargs == {'audience': XBOX_RP}
+    assert http.calls[1][2]['headers']['x-xbl-contract-version'] == '13'
+    rt = runtime(); rt.client.club_story_feed = AsyncMock(return_value=feed())
+    assert await rt.club_story_feed() == feed()
+    assert rt._history_snapshot is None and not rt._tasks
+    await rt.close()
+
+
+@pytest.mark.parametrize('status', [401, 403, 429, 503])
+async def test_club_posting_error_never_retries_or_replays(status):
+    from test_stories_probe import BODY
+    http = FakeHTTP(Response(200, BODY), Response(status, {'secret': 'do-not-render'}))
+    with pytest.raises(HTTPFailure) as error:
+        await client(http).club_story_feed()
+    assert error.value.status == status and len(http.calls) == 2
+
+
+async def test_missing_realm_reference_stops_club_posting():
+    http = FakeHTTP(Response(200, {'result': []}))
+    api = client(http)
+    with pytest.raises(ProtocolError):
+        await api.club_story_feed()
+    assert len(http.calls) == 1 and api.authorization.await_count == 1
+
+
+def test_system_event_text_fallback_and_screenshot_priority():
+    body = feed(); item = body['activityItems'][0]
+    item.update(ugcCaption='', itemText='An automatic event', contentType='System', activityItemType='TextPost')
+    item.pop('screenshotUri')
+    item['contentImageUri'] = 'https://images-eds.xboxlive.com/game-cover.png'
+    embed = render_feed(body)[0][0][1]
+    assert embed.title == 'Realm Event' and embed.description == 'An automatic event'
+    assert not embed.image.url
+    item.update(activityItemType='Screenshot', contentType='Game',
+                screenshotUri='https://images-eds.xboxlive.com/full.png',
+                screenshotThumbnail='https://images-eds.xboxlive.com/thumb.png')
+    item['authorInfo']['modernGamertagSuffix'] = '1234'
+    embed = render_feed(body)[0][0][1]
+    assert embed.image.url.endswith('/full.png') and embed.author.name == 'Builder#1234'
+
+
+def test_legacy_xbox_cdn_image_is_upgraded_without_changing_query():
+    assert image_url('http://images-eds.xboxlive.com/image/path?sig=sample') == 'https://images-eds.xboxlive.com/image/path?sig=sample'
+    assert image_url('http://user:password@images-eds.xboxlive.com/image') is None
+    assert image_url('http://images-eds.xboxlive.com.evil.invalid/image') is None
