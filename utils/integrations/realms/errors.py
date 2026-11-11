@@ -65,8 +65,8 @@ class StoriesError(ProtocolError):
     """Fixed diagnostic codes only; no names, IDs, cursors or response bodies."""
     category = 'stories_failed'
     reasons = {
-        'realm_missing': 'No accessible Realm named Old Coastal 10 was found.',
-        'realm_ambiguous': 'More than one accessible Realm matches Old Coastal 10.',
+        'realm_missing': 'No accessible Realm named OLD Coastal S10 was found.',
+        'realm_ambiguous': 'More than one accessible Realm matches OLD Coastal S10.',
         'realm_list': 'The accessible Realm list could not be read.',
         'realm_feed': 'The old Realm Stories response could not be read.',
         'club_reference': 'The Realm Stories response has no usable Xbox club reference.',

@@ -173,7 +173,7 @@ class RealmCommands(commands.Cog):
     async def storiespost(self, interaction: discord.Interaction):
         await self._post_stories(interaction)
 
-    @realm.command(name="oldstoriespost", description="Post Stories from Old Coastal 10 here (OP Team)")
+    @realm.command(name="oldstoriespost", description="Post Stories from OLD Coastal S10 here (OP Team)")
     async def oldstoriespost(self, interaction: discord.Interaction):
         await self._post_stories(interaction, old_realm=True)
 
@@ -229,7 +229,7 @@ class RealmCommands(commands.Cog):
                             attachment.close()
                     self._stories_sent.add(key)
                     posted += 1
-                source_label = " from Old Coastal 10 (October 31, 2026 to now, America/Chicago)" if old_realm else ""
+                source_label = " from OLD Coastal S10 (October 31, 2026 to now, America/Chicago)" if old_realm else ""
                 message = f"Posted {posted} Stories embed(s){source_label} in this channel, oldest first. Skipped {skipped} unsupported item(s), {duplicates} already posted."
                 if not old_realm:
                     message += f" {remaining} beyond the 10-item limit."

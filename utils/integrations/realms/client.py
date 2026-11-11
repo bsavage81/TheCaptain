@@ -87,7 +87,7 @@ class RealmsClient:
             if not isinstance(server, dict) or not isinstance(server.get('name'), str):
                 continue
             name = re.sub(r'\u00a7[0-9a-z]', '', server['name'], flags=re.IGNORECASE)
-            if name.strip().casefold() == 'old coastal 10':
+            if name.strip().casefold() == 'old coastal s10':
                 try:
                     matches.append(realm_id(server.get('id')))
                 except ProtocolError:

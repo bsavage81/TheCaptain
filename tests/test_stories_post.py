@@ -375,7 +375,7 @@ async def test_old_stories_command_uses_archive_and_separate_duplicate_scope():
     cog = RealmCommands(NS(settings=settings()), runtime=api)
     await RealmCommands.oldstoriespost.callback(cog, ctx)
     api.club_story_feed.assert_awaited_once_with(old_realm=True)
-    assert 'Old Coastal 10' in ctx.followup.send.call_args.args[0]
+    assert 'OLD Coastal S10' in ctx.followup.send.call_args.args[0]
     await RealmCommands.storiespost.callback(cog, ctx)
     assert ctx.channel.send.await_count == 2
     await RealmCommands.oldstoriespost.callback(cog, ctx)
@@ -415,7 +415,7 @@ async def test_archive_runtime_resolves_name_and_isolates_client(monkeypatch):
     await rt.close()
 
 
-@pytest.mark.parametrize('names', [[], ['Unrelated Realm'], ['Old Coastal 10', 'old coastal 10']])
+@pytest.mark.parametrize('names', [[], ['Unrelated Realm'], ['OLD Coastal S10', 'old coastal s10']])
 async def test_archive_missing_or_ambiguous_name_never_reads_feed(names):
     from utils.integrations.realms.errors import StoriesError
     response = {'servers': [{'id': i+70, 'name': name, 'state': 'UNINITIALIZED'}
@@ -478,7 +478,7 @@ async def test_archive_posts_past_session_guard_and_ten_item_limit():
 
 async def test_archive_lookup_ignores_uninitialized_slots_and_minecraft_name_formatting():
     body = {'servers': [{'id': 99, 'name': None, 'state': 'UNINITIALIZED'},
-                        {'id': 77, 'name': '  \u00a7aOld \u00a7lCoastal 10\u00a7r ', 'state': 'CLOSED'}]}
+                        {'id': 77, 'name': '  \u00a7aOld \u00a7lCoastal S10\u00a7r ', 'state': 'CLOSED'}]}
     http = FakeHTTP(Response(200, body))
     assert await client(http).old_stories_realm_id() == '77'
     assert len(http.calls) == 1

@@ -157,10 +157,10 @@ met an untimely death", and SlotSwitch uses "The Realm world changed". These do 
 substitute a player name for a mob or world, or expose arbitrary metadata. EasyAndSafe
 retains the generic fallback because no event text was found for that asset.
 
-## Old Coastal 10
+## OLD Coastal S10
 
 `/realm oldstoriespost` posts one Stories page from the accessible Realm currently
-named `Old Coastal 10` into the invoking channel. It requires the same Coastal
+named `OLD Coastal S10` into the invoking channel. It requires the same Coastal
 OP Team role and channel permissions as `/realm storiespost` and uses the same
 artwork, participant lookup, 10-item bound and per-session duplicate protection.
 Duplicate scopes are separate for current and archived Stories.
