@@ -209,3 +209,13 @@ names, malformed club responses, and cursor failures now return fixed diagnostic
 codes without private IDs, names, tokens, URLs or response content. These lookup
 edge cases and date boundaries are covered offline; the actual production failure
 has not been reproduced locally.
+
+## Exhausted Xbox cursors
+
+The Xbox activity-feed fixture in XboxReplay/xboxlive-api's
+`__tests__/e2e.test.js` returns `contToken: "0"` on an empty feed. Zero is now
+handled as an exhausted cursor (also accepting numeric zero), alongside absent
+or empty cursors. Collected pages are retained and no zero-cursor request is made.
+Nonzero repeated cursors still fail rather than reporting an incomplete archive
+as complete. This fix is based on the public client fixture; the actual cursor
+from the production failure has not been inspected.

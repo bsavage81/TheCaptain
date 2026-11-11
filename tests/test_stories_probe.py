@@ -129,3 +129,14 @@ async def test_transport_authorizes_only_returned_same_club_pagination_cursor():
         await transport.request('GET', FEED)
         session.response = HTTPResponse(json.dumps({'activityItems': []}).encode())
         await transport.request('GET', base)
+
+
+async def test_transport_does_not_authorize_exhausted_zero_cursor():
+    session = Session(HTTPResponse(json.dumps(BODY).encode()))
+    async with AiohttpTransport(selected_realm_id='42', session_factory=lambda **kwargs: session) as transport:
+        await transport.request('GET', FEED)
+        base = probe_urls(BODY)[1]
+        session.response = HTTPResponse(json.dumps({'activityItems': [], 'contToken': '0'}).encode())
+        await transport.request('GET', base)
+        with pytest.raises(AccessDenied):
+            await transport.request('GET', base + '&contToken=0')

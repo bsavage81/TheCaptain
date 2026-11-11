@@ -524,3 +524,32 @@ def test_archive_date_filter_uses_event_timestamp_over_club_post_date():
     body['realmEvents'] = [{'clubsPostId': 'private-id', 'eventName': 'NewMember',
                             'timestamp': '2026-10-01T00:00:00Z'}]
     assert not render_feed(body, limit=None, since=datetime(2026, 10, 31, 5, tzinfo=timezone.utc))[0]
+
+
+@pytest.mark.parametrize('terminal', ['0', 0])
+async def test_archive_zero_cursor_completes_without_requesting_zero_page(terminal):
+    from test_stories_probe import BODY, probe_urls
+    http = FakeHTTP(Response(200, BODY),
+                    Response(200, dict(feed(), contToken='older')),
+                    Response(200, {'activityItems': [dict(feed()['activityItems'][0], feedItemId='oldest')],
+                                   'contToken': terminal}))
+    result = await client(http).club_story_feed(all_pages=True)
+    assert [item['feedItemId'] for item in result['activityItems']] == ['private-id', 'oldest']
+    assert len(http.calls) == 3
+    assert http.calls[-1][1] == probe_urls(BODY)[1] + '&contToken=older'
+
+
+async def test_archive_empty_last_page_with_zero_cursor_returns_collected_stories():
+    from test_stories_probe import BODY
+    http = FakeHTTP(Response(200, BODY), Response(200, dict(feed(), contToken='last')),
+                    Response(200, {'activityItems': [], 'numItems': 0, 'contToken': '0'}))
+    result = await client(http).club_story_feed(all_pages=True)
+    assert len(result['activityItems']) == 1
+    assert len(http.calls) == 3
+
+
+async def test_archive_first_page_zero_cursor_still_keeps_posts():
+    from test_stories_probe import BODY
+    http = FakeHTTP(Response(200, BODY), Response(200, dict(feed(), contToken='0')))
+    result = await client(http).club_story_feed(all_pages=True)
+    assert len(result['activityItems']) == 1 and len(http.calls) == 2

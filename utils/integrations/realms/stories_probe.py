@@ -34,7 +34,10 @@ def next_club_page(base_url, body):
     if not isinstance(body, dict):
         raise StoriesError('club_page')
     token = body.get('contToken')
-    if token in (None, ''):
+    # Xbox's activity-feed empty response uses the string zero as its
+    # exhausted cursor, not a cursor for another request.
+    # https://github.com/XboxReplay/xboxlive-api/blob/master/__tests__/e2e.test.js
+    if token in (None, '', '0') or (type(token) is int and token == 0):
         return None
     if not isinstance(token, str) or len(token) > 16384:
         raise StoriesError('cursor_invalid')
