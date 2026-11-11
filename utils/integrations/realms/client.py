@@ -23,9 +23,11 @@ class RealmsClient:
         allowed = {"/worlds", "/activities/live/players", "/invites/pending", "/invites/count/pending"}
         if self.config.selected_realm_id:
             allowed.add("/worlds/" + self.config.selected_realm_id)
+        feed_path = "/api/v1.0/worlds/" + (self.config.selected_realm_id or "") + "/stories"
         stories_path = "/api/v1.0/worlds/" + (self.config.selected_realm_id or "") + "/stories/playeractivity"
         if self.config.selected_realm_id:
             allowed.add(stories_path)
+            allowed.add(feed_path)
             from .metrics import live_path
             allowed.add(live_path(self.config.selected_realm_id))
         if method != "GET" or path not in allowed:
@@ -39,13 +41,16 @@ class RealmsClient:
                 "Authorization": token.authorization.value, "Client-Version": self.config.client_version,
                 "User-Agent": "MCPE/UWP", "Accept": "application/json",
             }
-            if path == stories_path:
+            if path in {stories_path, feed_path}:
                 headers["Cache-Control"] = "no-cache, no-store"
-            frontend = path == stories_path or path.startswith("/api/v1.0/telemetry/")
+            frontend = path in {stories_path, feed_path} or path.startswith("/api/v1.0/telemetry/")
             response = await self.transport.request("GET", (STORIES_HOST if frontend else REALMS_HOST) + path,
                                                     headers=headers)
             if response.status == 200:
                 return response.body
+            if path == feed_path:
+                # Temporary probe: exactly one feed GET, including on 401/429.
+                raise HTTPFailure(response.status, response.retry_after)
             if response.status == 401 and not renewed:
                 token = await self.authorization(self.principal, rejected=token)
                 renewed = True
@@ -59,6 +64,14 @@ class RealmsClient:
                 attempts += 1
                 continue
             raise HTTPFailure(response.status, response.retry_after)
+
+    async def stories_debug(self):
+        """One feed GET; discard raw values and return only a structural summary."""
+        if not self.config.selected_realm_id:
+            raise AccessDenied()
+        from .stories_debug import summarize
+        body = await self.request("GET", "/api/v1.0/worlds/" + self.config.selected_realm_id + "/stories")
+        return "HTTP status: 200\n" + summarize(body)
 
     async def metrics(self):
         from .metrics import Metrics, live_path

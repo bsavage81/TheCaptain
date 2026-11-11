@@ -200,6 +200,24 @@ class RealmRuntime:
         finally:
             self._tasks.discard(task)
 
+    async def stories_debug(self):
+        """Temporary on-demand feed probe; no history persistence or polling."""
+        from utils.integrations.realms.errors import AccessDenied
+        if self._closed or self.client is None:
+            raise AccessDenied()
+        task = asyncio.current_task()
+        self._tasks.add(task)
+        try:
+            async with self._lock:
+                if self._closed:
+                    raise AccessDenied()
+                if self._retry_at > self._clock():
+                    raise HTTPFailure(429, self._retry_at - self._clock())
+                async with asyncio.timeout(45):
+                    return await self.client.stories_debug()
+        finally:
+            self._tasks.discard(task)
+
     async def stories(self):
         """Explicit private history requests share auth/lock, never the panel loop."""
         from utils.integrations.realms.errors import AccessDenied

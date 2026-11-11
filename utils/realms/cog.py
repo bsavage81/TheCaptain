@@ -163,6 +163,27 @@ class RealmCommands(commands.Cog):
         send = interaction.followup.send if interaction.response.is_done() else interaction.response.send_message
         await send("Realm information is unavailable. An operator may need to restore credentials or service access.", ephemeral=True)
 
+    @realm.command(name="storiesdebug", description="Temporary redacted Stories feed diagnostic (staff only)")
+    async def storiesdebug(self, interaction: discord.Interaction):
+        if not permitted(self.bot.settings, interaction):
+            await interaction.response.send_message("Realm commands require the Coastal OP Team role in Coastal Craft.", ephemeral=True)
+            return
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        from utils.integrations.realms.errors import HTTPFailure, ReauthRequired
+        try:
+            message = await self.runtime.stories_debug()
+        except HTTPFailure as error:
+            message = f"Stories feed HTTP status: {error.status}. Response not inspected or request rejected; no feed retry made."
+            if error.status in {401, 403}:
+                message += " Authentication or Stories access was rejected. Ask the operator to check access."
+        except ReauthRequired:
+            message = "Stories feed unavailable: operator reauthentication required. No feed response inspected."
+        except Exception:
+            message = "Stories feed unavailable: configuration, authentication, transport, or JSON response failure. HTTP status unavailable; no private error details shown."
+        if not permitted(self.bot.settings, interaction):
+            message = "You no longer have access to this Realm command."
+        await interaction.followup.send(message, ephemeral=True, allowed_mentions=discord.AllowedMentions.none())
+
     @realm.command(name="status", description="View the selected Realm state and observation time")
     async def status(self, interaction: discord.Interaction):
         await self.respond(interaction, "status")

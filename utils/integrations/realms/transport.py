@@ -9,7 +9,7 @@ import re
 
 import aiohttp
 
-from .errors import AccessDenied, ProtocolError, TransportError
+from .errors import AccessDenied, HTTPFailure, ProtocolError, TransportError
 
 AUTHORITY = "https://login.microsoftonline.com/consumers/oauth2/v2.0"
 USER_AUTH = "https://user.auth.xboxlive.com/user/authenticate"
@@ -51,12 +51,15 @@ class AiohttpTransport:
         self._factory = session_factory
         self._session = None
         self._semaphore = asyncio.Semaphore(2)
+        self._stories_feed = None
         self._reads = {REALMS_HOST + p for p in ("/worlds", "/activities/live/players", "/invites/pending", "/invites/count/pending")}
         if selected_realm_id is not None:
             if not isinstance(selected_realm_id, str) or not re.fullmatch(r"[1-9][0-9]{0,19}", selected_realm_id):
                 raise AccessDenied()
             self._reads.add(REALMS_HOST + "/worlds/" + selected_realm_id)
             self._reads.add(STORIES_HOST + "/api/v1.0/worlds/" + selected_realm_id + "/stories/playeractivity")
+            self._stories_feed = STORIES_HOST + "/api/v1.0/worlds/" + selected_realm_id + "/stories"
+            self._reads.add(self._stories_feed)
             from .metrics import live_path
             self._reads.add(STORIES_HOST + live_path(selected_realm_id))
 
@@ -92,6 +95,10 @@ class AiohttpTransport:
             async with self._semaphore:
                 async with self._session.request(method, url, headers=headers, data=form, json=payload,
                                                  allow_redirects=False) as response:
+                    # The diagnostic needs the status even for non-JSON errors.
+                    # Never read, report, or follow error/redirect content for this feed.
+                    if url == self._stories_feed and response.status != 200:
+                        return Response(response.status, None, retry_delay(response.headers.get("Retry-After")))
                     if 300 <= response.status < 400:
                         raise ProtocolError()
                     raw = bytearray()
@@ -105,6 +112,8 @@ class AiohttpTransport:
                     except (ValueError, UnicodeError):
                         malformed = True
                     if malformed:
+                        if url == self._stories_feed:
+                            raise HTTPFailure(response.status)
                         raise ProtocolError()
                     result = Response(response.status, body, retry_delay(response.headers.get("Retry-After")))
         except (aiohttp.ClientError, OSError, TimeoutError, ValueError):
