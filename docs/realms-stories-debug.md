@@ -48,3 +48,32 @@ deployment to obtain that result.
 The separate opt-in `/realm storiespost` command can now publish supported feed
 content on staff invocation; see [Stories posting](realms-stories-post.md). The
 debug command itself remains private and never forwards content.
+
+## Expanded schema report
+
+The diagnostic now also includes a detailed, bounded schema tree. Feed record
+field names that look like ordinary schema identifiers are visible even when not
+in the original field allowlist. Numeric IDs, UUID-like keys, URL/text-shaped keys,
+and arbitrary keys inside unknown maps remain redacted. Known schema containers
+(such as result, author, content, metadata and images) are expanded. This reveals
+field names for mapping without printing any scalar values. Field names are
+structural clues, not proof of a field's meaning.
+
+Each path shows its type and container count or string length. Strings receive
+per-report opaque equality labels, making repeated IDs/references recognizable
+without exposing the values or reusable hashes. Fixed shape indicators identify
+decimal/UUID-like identifiers, ISO-like timestamps, URL-like values, common media
+extensions, path-segment counts and whether a URL query is present. URLs, hostnames,
+path components, query names/values, actual IDs, timestamps, names and post text
+are withheld. JSON encoded inside strings is decoded only to inspect its structure;
+its scalar values remain withheld. Unknown event discriminator values are still
+not printed.
+
+The detailed scan expands up to 20 items per array, 80 fields per object, 12 levels,
+1,500 nodes and approximately 48,000 characters; truncation is explicitly reported.
+Long reports are sent as an ephemeral `realm-stories-schema.txt` attachment built
+in memory from the sanitized text. No raw response file is created and no extra
+API or image requests are made. The short aggregate summary remains in the report.
+After updating/restarting the bot, run `/realm storiesdebug` again. Its command
+signature has not changed, so an additional command sync is unnecessary if it is
+already registered.

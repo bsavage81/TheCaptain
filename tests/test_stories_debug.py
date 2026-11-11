@@ -135,3 +135,52 @@ async def test_auth_failure_and_missing_selection_make_no_feed_request():
         await api.stories_debug()
     api.authorization.assert_not_awaited()
     assert not http.calls
+
+
+def test_detailed_report_reveals_record_schema_but_not_private_values():
+    from utils.integrations.realms.stories_debug import detailed_report
+    import json
+    secret_url = 'https://private.invalid/person/image.png?token=secret'
+    body = {'result': [{'id': 'secret-id', 'timestamp': '2026-11-11T09:00:00Z',
+        'authorXuid': '123456789123456789', 'storyData': json.dumps({'storyBody': 'private post'}),
+        'mediaRefs': [secret_url, secret_url], 'unknownMap': {'alice': 'private name'},
+        'accessToken': 'canary-secret'}]}
+    report = detailed_report(body)
+    assert '$.result[0].storyData' in report and 'authorXuid' in report and 'mediaRefs' in report
+    assert '.<decoded-json>.storyBody' in report
+    assert 'URL-shaped' in report and 'media extension=png' in report and 'query present=yes' in report
+    assert 'private post' not in report and 'private name' not in report
+    assert '123456789123456789' not in report and 'canary-secret' not in report and secret_url not in report
+    assert '.alice' not in report and '<redacted-key>' in report
+    url_lines = [line for line in report.splitlines() if 'URL-shaped' in line]
+    assert len(url_lines) == 2 and url_lines[0].split('ref=')[1] == url_lines[1].split('ref=')[1]
+
+
+def test_detailed_report_bounds_large_and_nested_encoded_payloads():
+    from utils.integrations.realms.stories_debug import detailed_report
+    report = detailed_report({'result': [{'payload': 'x' * 10000}] * 1000})
+    assert len(report) < 50000 and 'Detailed scan truncated: yes' in report
+    assert 'x' * 100 not in report
+    assert 'Detailed scan truncated: yes' in detailed_report({'data': {str(i): [] for i in range(200)}})
+
+
+async def test_long_diagnostic_delivered_as_private_sanitized_attachment():
+    ctx = interaction()
+    report = 'HTTP status: 200\n' + 'schema line\n' * 200
+    cog = RealmCommands(NS(settings=settings()), runtime=NS(stories_debug=AsyncMock(return_value=report)))
+    await RealmCommands.storiesdebug.callback(cog, ctx)
+    sent = ctx.followup.send.call_args
+    assert sent.kwargs['ephemeral'] and sent.kwargs['file'].filename == 'realm-stories-schema.txt'
+    assert sent.kwargs['file'].fp.read().decode() == report
+    assert len(sent.args[0]) < 2000
+
+
+async def test_role_revoked_does_not_attach_detailed_report():
+    ctx = interaction()
+    async def probe():
+        ctx.user.roles = []
+        return 'private schema' * 1000
+    cog = RealmCommands(NS(settings=settings()), runtime=NS(stories_debug=probe))
+    await RealmCommands.storiesdebug.callback(cog, ctx)
+    assert 'file' not in ctx.followup.send.call_args.kwargs
+    assert 'private schema' not in ctx.followup.send.call_args.args[0]

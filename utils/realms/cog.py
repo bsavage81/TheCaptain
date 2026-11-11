@@ -1,5 +1,6 @@
 """Private Coastal OP Team views of the selected Realm."""
 import asyncio
+import io
 
 import discord
 from discord import app_commands
@@ -230,7 +231,14 @@ class RealmCommands(commands.Cog):
             message = "Stories feed unavailable: configuration, authentication, transport, or JSON response failure. HTTP status unavailable; no private error details shown."
         if not permitted(self.bot.settings, interaction):
             message = "You no longer have access to this Realm command."
-        await interaction.followup.send(message, ephemeral=True, allowed_mentions=discord.AllowedMentions.none())
+        if len(message) > 1800:
+            # Attach only the already-sanitized report; never raw response JSON.
+            report = discord.File(io.BytesIO(message.encode("utf-8")), filename="realm-stories-schema.txt")
+            await interaction.followup.send(
+                "Stories diagnostic completed. The detailed redacted schema is attached; no content values or image URLs are included.",
+                file=report, ephemeral=True, allowed_mentions=discord.AllowedMentions.none())
+        else:
+            await interaction.followup.send(message, ephemeral=True, allowed_mentions=discord.AllowedMentions.none())
 
     @realm.command(name="status", description="View the selected Realm state and observation time")
     async def status(self, interaction: discord.Interaction):

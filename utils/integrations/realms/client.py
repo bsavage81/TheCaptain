@@ -75,9 +75,9 @@ class RealmsClient:
         """One feed GET; discard raw values and return only a structural summary."""
         if not self.config.selected_realm_id:
             raise AccessDenied()
-        from .stories_debug import summarize
+        from .stories_debug import summarize, detailed_report
         body = await self.story_feed()
-        return "HTTP status: 200\n" + summarize(body)
+        return "HTTP status: 200\n" + summarize(body) + "\n\n" + detailed_report(body)
 
     async def metrics(self):
         from .metrics import Metrics, live_path
