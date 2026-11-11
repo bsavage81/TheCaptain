@@ -121,11 +121,16 @@ Repository inspected: https://github.com/Mojang/bedrock-samples/tree/main/resour
 
 ## Bundled event artwork
 
-`images/realms-stories/` contains 31 original PNG assets copied without modification
+`images/realms-stories/` contains 31 PNG assets sourced
 from the installed Minecraft for Windows `Content/data/gui/dist/hbui/assets` folder.
 Hashed source filenames were renamed to their event names. The additional names
 are assumed event mappings, pending confirmation in live feed responses; no new
 API event semantics or participant wording is inferred from those filenames.
+
+The 29 small 64×36 originals are enlarged to 640×360 with nearest-neighbor
+scaling so Discord displays readable pixel art without smoothing. The two
+1024×576 boss illustrations remain at their original resolution. Git history
+retains the original small files.
 
 Matched events without screenshot media use their local PNG as a Discord attachment.
 Existing screenshot URLs retain priority. Unknown event names or missing asset files
