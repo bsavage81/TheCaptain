@@ -29,8 +29,14 @@ class StoryDeliveries:
                 raise StorageError()
         self.entries = data
 
-    async def save(self, key, message_id, footer):
+    @staticmethod
+    def signature(embed):
+        return hashlib.sha256(json.dumps(embed.to_dict(), sort_keys=True).encode()).hexdigest()
+
+    async def save(self, key, message_id, footer, *, signature=None):
         self.entries[key] = {'message_id': message_id, 'footer': footer}
+        if signature is not None:
+            self.entries[key]['signature'] = signature
         if self.store is not None:
             task = asyncio.create_task(asyncio.to_thread(self.store.save_story_deliveries, dict(self.entries)))
             try:

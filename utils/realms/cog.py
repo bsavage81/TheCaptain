@@ -199,6 +199,8 @@ class RealmCommands(commands.Cog):
                     return
                 body = await self.runtime.club_story_feed(old_realm=True) if old_realm else await self.runtime.club_story_feed()
                 if old_realm:
+                    from .stories_archive import restore_archive
+                    body = restore_archive(body)
                     from datetime import datetime, timezone
                     from zoneinfo import ZoneInfo
                     since = datetime(2026, 10, 31, tzinfo=ZoneInfo('America/Chicago'))
@@ -220,19 +222,31 @@ class RealmCommands(commands.Cog):
                         raise RuntimeError()
                     key = (interaction.guild_id, channel.id, source, identity)
                     delivery_key = StoryDeliveries.key(interaction.guild_id, channel.id, source, identity)
+                    signature = StoryDeliveries.signature(embed)
                     previous = self._story_deliveries.entries.get(delivery_key)
                     if previous is not None:
-                        if previous['footer'] != embed.footer.text:
+                        if previous['footer'] != embed.footer.text or previous.get('signature') != signature:
                             original = await channel.fetch_message(previous['message_id'])
                             if not permitted(self.bot.settings, interaction):
                                 raise RuntimeError()
                             if original.author.id != self.bot.user.id or not original.embeds:
                                 raise RuntimeError()
-                            # Retain the original embed and its uploaded artwork.
-                            existing = original.embeds[0].copy()
-                            existing.set_footer(text=embed.footer.text)
-                            await original.edit(embed=existing, allowed_mentions=discord.AllowedMentions.none())
-                            await self._story_deliveries.save(delivery_key, original.id, embed.footer.text)
+                            # Refresh reconstructed text as well as counters. Reuse
+                            # Discord's existing artwork URL when one is available.
+                            existing = embed.copy()
+                            attachment = None
+                            if original.embeds[0].image.url:
+                                existing.set_image(url=original.embeds[0].image.url)
+                            elif (embed.image.url or '').startswith('attachment://'):
+                                attachment = artwork_file(embed)
+                            try:
+                                await original.edit(embed=existing, allowed_mentions=discord.AllowedMentions.none(),
+                                                    **({'attachments': [attachment]} if attachment else {}))
+                            finally:
+                                if attachment is not None:
+                                    attachment.close()
+                            await self._story_deliveries.save(delivery_key, original.id, embed.footer.text,
+                                                              signature=signature)
                             updated += 1
                         else:
                             duplicates += 1
@@ -254,9 +268,9 @@ class RealmCommands(commands.Cog):
                     posted += 1
                     # Memory guard is already set if checkpoint persistence fails.
                     if type(getattr(sent_message, 'id', None)) is int:
-                        await self._story_deliveries.save(delivery_key, sent_message.id, embed.footer.text)
+                        await self._story_deliveries.save(delivery_key, sent_message.id, embed.footer.text, signature=signature)
                 source_label = " from OLD Coastal S10 (October 31, 2026 to now, America/Chicago)" if old_realm else ""
-                message = f"Posted {posted} Stories embed(s){source_label} in this channel, oldest first. Updated {updated} footer(s). Skipped {skipped} unsupported item(s), {duplicates} already posted."
+                message = f"Posted {posted} Stories embed(s){source_label} in this channel, oldest first. Updated {updated} existing post(s). Skipped {skipped} unsupported item(s), {duplicates} already posted."
                 if not old_realm:
                     message += f" {remaining} beyond the 10-item limit."
                 message += f" Realm feed in Minecraft (copy this address): `minecraft://openRealmsStories?realmId={source}`"

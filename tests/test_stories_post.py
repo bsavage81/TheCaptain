@@ -636,3 +636,64 @@ async def test_footer_updates_original_message_after_restart_and_handles_removed
     assert edited.image.url == 'https://cdn.discordapp.com/attachments/existing.png'
     await RealmCommands.storiespost.callback(cog, ctx)
     assert original.edit.await_count == 1
+
+
+def test_named_mob_uses_verified_metatext_and_escapes_it():
+    from utils.realms.stories_feed import realm_event_text
+    event = {'eventName': 'NamedMob', 'players': ['1'], 'metadata': {'metatext': 'Shadow'}}
+    assert realm_event_text(event, {'1': 'Sailor'})[1] == 'Sailor has a new friend, Shadow.'
+    event['metadata']['metatext'] = '@everyone **pet**'
+    text = realm_event_text(event, {'1': 'Sailor'})[1]
+    assert '@everyone' not in text and '\\*' in text
+    event['metadata'] = {'unverified': 'private-canary'}
+    assert realm_event_text(event, {'1': 'Sailor'})[1] == 'Sailor has a new friend.'
+
+
+
+def test_archive_restore_is_realm_scoped_and_does_not_mutate_api_data(tmp_path):
+    import copy
+    import json
+    from utils.realms.stories_archive import restore_archive
+    event_id = '12345678-1234-1234-1234-123456789abc'
+    record = {'version': 1, 'realm_id': '77', 'events': [{'event_id': event_id,
+              'event_name': 'NewMember', 'participants': [f'Sailor{i}' for i in range(9)], 'pet_name': None}]}
+    path = tmp_path / 'archive.json'
+    path.write_text(json.dumps(record))
+    body = dict(feed(), sourceRealmId='77')
+    body['activityItems'][0]['postContentLocators'] = [{'locatorType': 'MinecraftContent', 'locatorUri': event_id}]
+    original = copy.deepcopy(body)
+    result = restore_archive(body, path=path)
+    assert body == original
+    embed = render_feed(result)[0][0][1]
+    assert all(f'Sailor{i}' in embed.description for i in range(9))
+    assert 'other players' not in embed.description
+    body['sourceRealmId'] = '42'
+    assert restore_archive(body, path=path) is body
+
+
+def test_archive_reconstruction_data_has_26_distinct_verified_event_records():
+    import json
+    from utils.realms.stories_archive import ARCHIVE
+    data = json.loads(ARCHIVE.read_text(encoding='utf8'))
+    records = data['events']
+    assert len(records) == len({r['event_id'] for r in records}) == 26
+    assert sorted(len(r['participants']) for r in records if r['event_name'] == 'NewMember') == [1, 1, 1, 2, 5, 9]
+    assert len([r for r in records if r.get('pet_name')]) == 4
+
+
+async def test_saved_embed_text_refreshes_when_footer_is_unchanged():
+    from utils.realms.story_deliveries import StoryDeliveries
+    ctx = context()
+    api = NS(club_story_feed=AsyncMock(return_value=feed()))
+    bot = NS(settings=settings(), user=NS(id=999))
+    cog = RealmCommands(bot, runtime=api)
+    cog._story_deliveries = StoryDeliveries(None)
+    await cog._story_deliveries.load()
+    key = StoryDeliveries.key(202,303,settings()['realms']['selected_realm_id'],'private-id')
+    desired = render_feed(feed())[0][0][1]
+    await cog._story_deliveries.save(key,123,desired.footer.text,signature='previous-render')
+    original = NS(id=123,author=NS(id=999),embeds=[desired.copy()],edit=AsyncMock())
+    ctx.channel.fetch_message=AsyncMock(return_value=original)
+    await RealmCommands.storiespost.callback(cog,ctx)
+    original.edit.assert_awaited_once()
+    ctx.channel.send.assert_not_awaited()

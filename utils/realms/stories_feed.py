@@ -177,7 +177,7 @@ EVENT_TITLES = {'NewMember': 'New Realm member', 'FirstCraftedNetherite': 'Upgra
 def player_phrase(event, names):
     players = event.get('players')
     ids = list(dict.fromkeys(p for p in players if isinstance(p, str))) if isinstance(players, list) else []
-    known = [names[p] for p in ids if p in names][:5]
+    known = [names[p] for p in ids if p in names][:(25 if event.get('_archive_all_names') is True else 5)]
     others = len(ids) - len(known)
     if not known:
         return 'A player' if len(ids) <= 1 else f'{len(ids)} players'
@@ -202,7 +202,11 @@ def realm_event_text(event, names):
     players = event.get('players')
     players = list(dict.fromkeys(p for p in players if isinstance(p, str))) if isinstance(players, list) else []
     if kind == 'NamedMob':
-        return title, player_phrase(dict(event, players=players[:1]), names) + ' has a new friend.'
+        metadata = event.get('metadata')
+        pet_name = metadata.get('metatext') if isinstance(metadata, dict) else None
+        pet_name = clean(pet_name, 160) if isinstance(pet_name, str) and pet_name.strip() else ''
+        text = player_phrase(dict(event, players=players[:1]), names) + ' has a new friend'
+        return title, text + (', ' + pet_name if pet_name else '') + '.'
     template = EVENT_TEXT[kind]
     grouped = kind + '.grouped'
     if len(players) > 1 and grouped in EVENT_TEXT:

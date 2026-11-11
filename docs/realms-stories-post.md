@@ -253,3 +253,25 @@ Stories feed, not an individual Story. The completion message includes a copyabl
 feed URI. No unsupported custom-scheme Discord URL button or fabricated per-Story
 link is emitted. Launching it still depends on the user's installed Minecraft client.
 Source: https://learn.microsoft.com/en-us/minecraft/creator/reference/content/deep-links
+
+## Screenshot-verified OLD Coastal S10 reconstruction
+
+`config/old-coastal-s10-stories.json` contains the operator-supplied historical
+participant lists and pet names for the 26 event cards shown in the screenshots.
+It is bound to the captured old Realm ID and exact MinecraftContent event UUIDs,
+and applied only by oldstoriespost. It restores the 28-card backfill (26 events,
+two original screenshot posts). The initial October 31 join cards are reconstructed
+as the verified five-player and nine-player groups; all nine names are displayed.
+The two simultaneous join cards have identical captured counters, so the screenshots
+do not independently establish which Xbox reference belongs to which join group.
+These are historical corrections, not a general-purpose inference rule.
+
+The live API still supplies counters, screenshot media, and available timestamps.
+Source data is not mutated. Live Stories commands never use this historical file.
+Later command runs refresh saved embeds when rendered content changes, including
+text changes without counter changes. Existing artwork is retained, and missing
+artwork is attached when restoring generic event posts. Pet names use the observed
+`metadata.metatext` field with normal escaping and length limits.
+
+This reconstruction does not guarantee future live responses will always include
+complete metadata; missing-data handling remains necessary for live posts too.
