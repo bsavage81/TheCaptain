@@ -76,6 +76,7 @@ class RealmCommands(commands.Cog):
         self.bot = bot
         self._stories_post_lock = asyncio.Lock()
         self._stories_sent = set()
+        self._story_deliveries = None
         self.runtime = runtime if runtime is not None else RealmRuntime(bot.settings)
         self.panels = PanelController(bot, self.runtime)
         self.metrics_panels = MetricsController(bot, self.runtime)
@@ -184,7 +185,7 @@ class RealmCommands(commands.Cog):
         await interaction.response.defer(ephemeral=True, thinking=True)
         from .stories_feed import render_feed, artwork_file
         from utils.integrations.realms.errors import HTTPFailure, StoriesError, RealmsError
-        posted = 0
+        posted = updated = 0
         try:
             async with self._stories_post_lock:
                 channel = interaction.channel
@@ -208,31 +209,57 @@ class RealmCommands(commands.Cog):
                 if any((embed.image.url or '').startswith('attachment://') for _, embed in entries) and not permissions.attach_files:
                     await interaction.followup.send("I need Attach Files here to include Realm event artwork.", ephemeral=True)
                     return
+                from .story_deliveries import StoryDeliveries
+                if self._story_deliveries is None:
+                    self._story_deliveries = StoryDeliveries(getattr(self.runtime, 'store', None))
+                await self._story_deliveries.load()
                 duplicates = 0
+                source = body['sourceRealmId'] if old_realm else self.bot.settings['realms']['selected_realm_id']
                 for identity, embed in entries:
                     if not permitted(self.bot.settings, interaction):
                         raise RuntimeError()
-                    source = ('old', body['sourceRealmId']) if old_realm else 'current'
                     key = (interaction.guild_id, channel.id, source, identity)
+                    delivery_key = StoryDeliveries.key(interaction.guild_id, channel.id, source, identity)
+                    previous = self._story_deliveries.entries.get(delivery_key)
+                    if previous is not None:
+                        if previous['footer'] != embed.footer.text:
+                            original = await channel.fetch_message(previous['message_id'])
+                            if not permitted(self.bot.settings, interaction):
+                                raise RuntimeError()
+                            if original.author.id != self.bot.user.id or not original.embeds:
+                                raise RuntimeError()
+                            # Retain the original embed and its uploaded artwork.
+                            existing = original.embeds[0].copy()
+                            existing.set_footer(text=embed.footer.text)
+                            await original.edit(embed=existing, allowed_mentions=discord.AllowedMentions.none())
+                            await self._story_deliveries.save(delivery_key, original.id, embed.footer.text)
+                            updated += 1
+                        else:
+                            duplicates += 1
+                        continue
                     if key in self._stories_sent:
                         duplicates += 1
                         continue
                     # Memory-only duplicate guard; bounded without silently forgetting sent posts.
-                    if not old_realm and sum(key[2] == 'current' for key in self._stories_sent) >= 1000:
+                    if not old_realm and sum(key[2] == source for key in self._stories_sent) >= 1000:
                         raise RuntimeError()
                     attachment = artwork_file(embed)
                     try:
-                        await channel.send(embed=embed, allowed_mentions=discord.AllowedMentions.none(),
+                        sent_message = await channel.send(embed=embed, allowed_mentions=discord.AllowedMentions.none(),
                                            **({'file': attachment} if attachment is not None else {}))
                     finally:
                         if attachment is not None:
                             attachment.close()
                     self._stories_sent.add(key)
                     posted += 1
+                    # Memory guard is already set if checkpoint persistence fails.
+                    if type(getattr(sent_message, 'id', None)) is int:
+                        await self._story_deliveries.save(delivery_key, sent_message.id, embed.footer.text)
                 source_label = " from OLD Coastal S10 (October 31, 2026 to now, America/Chicago)" if old_realm else ""
-                message = f"Posted {posted} Stories embed(s){source_label} in this channel, oldest first. Skipped {skipped} unsupported item(s), {duplicates} already posted."
+                message = f"Posted {posted} Stories embed(s){source_label} in this channel, oldest first. Updated {updated} footer(s). Skipped {skipped} unsupported item(s), {duplicates} already posted."
                 if not old_realm:
                     message += f" {remaining} beyond the 10-item limit."
+                message += f" Realm feed in Minecraft (copy this address): `minecraft://openRealmsStories?realmId={source}`"
                 if skipped:
                     message += " Items outside the date range, without a usable date, or with unsupported content were skipped." if old_realm else " Some feed fields or media references are not yet recognized; no raw metadata was published."
         except StoriesError as error:

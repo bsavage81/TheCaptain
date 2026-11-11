@@ -165,3 +165,23 @@ def test_acl_helper_does_not_inherit_secret_environment(monkeypatch, tmp_path):
     token_store._windows_permissions(tmp_path)
     assert "CAPTAIN_REALMS_KEYS" not in captured and "OTHER_PRIVATE_TOKEN" not in captured
     assert "canary" not in repr(captured)
+
+
+async def test_story_delivery_encrypted_roundtrip_survives_restart(tmp_path):
+    from utils.realms.story_deliveries import StoryDeliveries
+    keys = {'key-one': Secret(Fernet.generate_key().decode())}
+    directory = tmp_path / 'private'
+    with store(directory, keys) as cache:
+        cache.save(account())
+        credential_bytes = cache.path.read_bytes()
+        ledger = StoryDeliveries(cache)
+        await ledger.load()
+        key = ledger.key(202, 303, '42', 'canary-private-story')
+        await ledger.save(key, 987654321, 'hearts 3 comments 1')
+        assert cache.path.read_bytes() == credential_bytes
+        raw = (directory / 'story-deliveries.realms.enc').read_text()
+        assert 'hearts 3' not in raw and '987654321' not in raw and 'canary-private-story' not in raw
+    with store(directory, keys) as cache:
+        ledger = StoryDeliveries(cache)
+        await ledger.load()
+        assert ledger.entries[key] == {'message_id': 987654321, 'footer': 'hearts 3 comments 1'}

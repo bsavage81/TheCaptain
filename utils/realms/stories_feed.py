@@ -216,11 +216,49 @@ def realm_event_text(event, names):
     return title, text
 
 
+def event_reference(item):
+    """Minecraft event identity is independent of the Xbox posting identity."""
+    import re
+    locators = item.get('postContentLocators')
+    if isinstance(locators, list):
+        for locator in locators:
+            if isinstance(locator, dict) and locator.get('locatorType') == 'MinecraftContent':
+                value = locator.get('locatorUri')
+                if isinstance(value, str) and re.fullmatch(r'[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}', value):
+                    return value.lower()
+    return None
+
+
+def count_value(item, field):
+    value = item.get(field, 0)
+    return value if type(value) is int and 0 <= value <= 2**63 - 1 else 0
+
+
+def prepare_items(items):
+    """Coalesce duplicate event references without summing duplicated counters."""
+    result, positions = [], {}
+    for item in items:
+        if not isinstance(item, dict):
+            result.append(item)
+            continue
+        reference = event_reference(item)
+        identity = ('event', reference) if reference else ('post', item.get('feedItemId'))
+        if not isinstance(identity[1], str) or identity not in positions:
+            if isinstance(identity[1], str):
+                positions[identity] = len(result)
+            result.append(dict(item))
+            continue
+        existing = result[positions[identity]]
+        for field in ('numLikes', 'numComments'):
+            existing[field] = max(count_value(existing, field), count_value(item, field))
+    return result
+
+
 def render_feed(body, *, limit=10, since=None, until=None):
     """Return (opaque ID, embed) pairs, plus skipped/remaining counts."""
     if not isinstance(body, dict) or not isinstance(body.get('activityItems'), list):
         raise ProtocolError()
-    result = list(body['activityItems'])
+    result = prepare_items(body['activityItems'])
     realm = body.get('realmEvents', [])
     if not isinstance(realm, list) or (limit is not None and len(realm) > 1000):
         raise ProtocolError()
@@ -239,6 +277,8 @@ def render_feed(body, *, limit=10, since=None, until=None):
             name = author.get('modernGamertag') or author.get('name')
             if isinstance(identity, str) and isinstance(name, str) and name.strip() and not name.isdecimal():
                 names.setdefault(identity, clean(name, 80))
+    event_ids = {}
+    locator_ids = {event_reference(item) for item in result if isinstance(item, dict)}
     club_ids = {item.get('feedItemId') for item in result if isinstance(item, dict) and isinstance(item.get('feedItemId'), str)}
     for event in realm:
         if not isinstance(event, dict):
@@ -247,7 +287,9 @@ def render_feed(body, *, limit=10, since=None, until=None):
         if not isinstance(reference, str) or not reference or len(reference) > 256:
             continue
         events[reference] = event
-        if reference not in club_ids:
+        if isinstance(event.get('id'), str):
+            event_ids[event['id'].lower()] = event
+        if reference not in club_ids and (not isinstance(event.get('id'), str) or event['id'].lower() not in locator_ids):
             result.append({'feedItemId': reference, 'contentType': 'System'})
             club_ids.add(reference)
     rendered, skipped, seen = [], 0, set()
@@ -263,7 +305,12 @@ def render_feed(body, *, limit=10, since=None, until=None):
             skipped += 1
             continue
         seen.add(identity)
-        event = events.get(identity)
+        reference = event_reference(item)
+        event = events.get(identity) or event_ids.get(reference)
+        if reference:
+            identity = 'event:' + reference
+        elif event is not None and isinstance(event.get('id'), str):
+            identity = 'event:' + event['id'].lower()
         text, media = story_text(item), images(item)
         event_title = None
         if event is not None:
@@ -296,8 +343,10 @@ def render_feed(body, *, limit=10, since=None, until=None):
             kind = event.get('eventName')
             if isinstance(kind, str) and kind in EVENT_ARTWORK and (ARTWORK_DIR / (kind + '.png')).is_file():
                 embed.set_image(url='attachment://' + kind + '.png')
+        footer = f'\u2764\ufe0f {count_value(item, "numLikes")} \u00b7 \U0001f4ac {count_value(item, "numComments")}'
         if len(media) > 1:
-            embed.set_footer(text=f'{len(media) - 1} additional images not included')
+            footer += f' | {len(media) - 1} additional images not included'
+        embed.set_footer(text=footer)
         rendered.append((identity, embed))
     # The service feeds newest first. Reverse ties/undated entries too, then
     # sort dated events and screenshots together across every retrieved page.

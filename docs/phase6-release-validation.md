@@ -5,6 +5,157 @@ Starting revision: `8f3f5258eef2d5afe4a62802d6338bd36f491530`.
 This review does not authorize activation, migration, staging/import of real
 records, deployment, restart, main merge, Realm changes or announcements.
 
+## Approved attribution and revised review preparation (after 72c30ab)
+
+The owner approved **source attribution only** for the older `Season 3` application
+tab (`gid=107533011`, Season 3) and `Coastal Members Season 4` / `Sheet1`
+(`gid=0`, header row 4, Season 4). Neither approval verifies player identity or
+authorizes any production staging/import. The unnamed `Form Responses 1` tab
+(`gid=1332515138`), `Easy View` and removal/warning register remain excluded.
+These current decisions supersede the earlier pending-attribution wording below.
+
+Exact mappings are prepared in [the review-only manifest](../config/player-history-review.json).
+It names all ten approved worksheet/gid/header/season combinations, marks roster
+versus application evidence, retains the existing Discord-ID trust assumptions,
+and explicitly sets `import_authorized:false`. It is **not** runtime configuration;
+no `botdata` settings or Google files changed. The approved older `Season 3` tab
+is an explicit separate review batch, avoiding the runtime discovery system's
+one-worksheet-per-workbook limitation. The unapproved first tab is never a fallback.
+
+A fresh bounded read of identity/date/approval columns across all ten sources was
+processed through the existing `parse_rows`, `record_key` and no-write `preview`
+functions. The review wrapper validates exact worksheet identity and preserves
+canonical `/edit#gid=...` source URLs and existing fingerprints. Five embedded header
+rows were excluded. Repeated rows retain all source-row locators in private material.
+No contact fields, application answers, coordinates, moderation narratives, current
+Discord membership or Realm history were fetched. No production database was accessed.
+
+### Revised aggregate preview
+
+| Measure | Fresh result and unit |
+| --- | --- |
+| Source observations | **765**, after excluding five embedded headers, before same-source deduplication |
+| Distinct source fingerprints | **524**, not a unique-person count |
+| Repeated source observations | **241**: 239 in the approved older Season 3 application tab and two in the original sources |
+| Conservative proposed canonical profiles | **352** under the existing empty-registry preview; proposals, not verified people or approved links |
+| Ambiguous distinct records | **172**; raw-row-weighted ambiguity is 272 because repeated rows also appear in ambiguous groups |
+| Duplicate-name groups | **75**, across gamertag/Discord-name field groups; groups can overlap |
+| Cross-worksheet/source name-overlap groups | **53**, involving **132** distinct record candidates; suggestions only |
+| Exact gamertag + parsed application-date groups across approved sources | **0**; the five known matches belong to the excluded unnamed tab |
+| Trusted Discord-ID records | **73**, grouped into **59** IDs; ten repeated-ID groups, two differing-gamertag groups |
+| Records lacking trusted Discord IDs | **451 distinct records** requiring independent identity evidence before association |
+| Verified XUID evidence | **0** source records; all Discord-to-Xbox ownership links still require independent evidence |
+| Source issues / conflicting payloads under one fingerprint | **0 / 0** in this selected snapshot |
+| Identity decisions / production imports | **0 / 0**; all 524 distinct records remain unapproved for import |
+
+The preview used **empty local in-memory SQLite**, not a current production snapshot.
+The old read-only empty-production count is historical evidence only. No current
+existing-profile matches or current guild membership are claimed. The 352 proposals
+are the established preview's conservative standalone/stable-key proposals; do not
+add 59 trusted-ID groups to that number, or treat ambiguity as an automatic merge.
+Full aggregate output is in [player-history-review-summary.json](player-history-review-summary.json).
+
+| Season | Raw observations | Distinct source fingerprints |
+| --- | ---: | ---: |
+| 3 | 317 | 77 |
+| 4 | 85 | 85 |
+| 5 | 96 | 96 |
+| 6 | 134 | 133 |
+| 7 | 60 | 60 |
+| 8 | 34 | 34 |
+| 9 | 17 | 17 |
+| 10 | 22 | 22 |
+| **Total** | **765** | **524** |
+
+Season 3's approved additional tab contributes 48 distinct observations; its 239
+repeats collapse within that same source. The approved Season 4 roster contributes
+43 distinct membership observations, with no invented application dates or application
+status. Seventeen of the additional Season 3 records and 25 of the additional roster
+records have exact normalized name candidates in the original eight sources.
+Those are observation counts, not verified common players. Records with matching
+names in a roster and application remain separate source evidence until identity review.
+
+### Prepared private batches
+
+The local private staff package is under
+`.test-tmp/phase6-identity-review-20261103-final/`, protected by the existing Windows
+private-ACL helper and confirmed Git-ignored. It was **not committed, uploaded or
+sent to staff**. Only source mappings and aggregate counts are in GitHub.
+
+- `identity-review.json`: source-keyed identity evidence, normalized/raw application
+  timestamps, all repeated-row locators, review groups and name suggestions. All
+  identity approvals remain false. No profile ID or XUID is invented.
+- `unnamed-tab-review.json`: 29 separate observations with `season:null` and explicit
+  exclusion, preserving their five exact name/date links to approved-source fingerprints.
+
+Access is for the owner and designated Coastal OP reviewers; do not place this
+package in a public Discord channel, public Drive folder or repository. Owner approval
+of reviewers, sharing destination and retention/deletion policy is still needed
+before distributing it. Temporary source-input copies were removed after preparation;
+the protected review evidence remains available locally for the requested review.
+
+Priority A contains the **73 records / 59 stable-ID groups**, preserving every
+associated season and flagging both differing-gamertag groups. These are unapproved
+identity proposals, not automatically reviewed associations. Discord ID evidence is
+not proof of Xbox ownership.
+
+Priority B contains **360 original-source name-only records** after setting aside
+Priority A for review. Priority C contains the **91 additional approved-source
+observations** (48 applications + 43 roster entries). B and C are disjoint source
+queues; a person may still be represented in either or both. Of all 451 remaining
+name-only records, **137** have duplicate-name or Priority-A name suggestions;
+there are **56 remaining name-only duplicate groups**, and **33 records** have
+name-only suggestions to Priority A. These counts overlap and must not be added.
+Actual identity approvals are still zero, so this is queue stratification, not a
+claim that 73 identities were already resolved. Recalculate after each independently
+reviewed stable-ID batch; never materialize guessed profiles to make ambiguity disappear.
+
+### Unnamed tab: further evidence, still excluded
+
+Fresh reads confirm 29 observations spanning September 30, 2017–February 17, 2018,
+with five exact normalized gamertag/parsed-date matches to the audited Season 4 sheet.
+The workbook was created **June 8, 2017 UTC** and last modified **August 3, 2018 UTC**.
+The explicitly named Season 4 application workbook was created **February 19, 2018 UTC**,
+yet contains application dates beginning February 12. Both currently share the same
+Drive parent. Workbook creation therefore cannot be treated as application or season
+start; copying/backfill is possible. Current folder placement and modification times
+do not establish the historical season of each row.
+
+The approved Season 3 tab ends September 30, the same date the unnamed tab begins;
+that suggests a transition/split. Continuity and five exact overlaps with the named
+Season 4 source support an **early Season 4 hypothesis**, but neither a historical
+season boundary nor whole-tab attribution is proven. No row is assigned a season.
+
+**Owner decision remains required:** approve the whole tab as Season 4 after checking
+independent season chronology, specify an evidenced transition/date split, or leave it
+excluded. Until then all 29 observations, including the 24 without the known exact
+cross-file matches, stay outside the approved ten-source preview/import batches.
+
+### Review tooling, tests and remaining gates
+
+`scripts.player_history_review.py` is an offline wrapper around the existing source
+parser/fingerprint/preview. It adds only the counts and private docket preparation
+needed here: exact mapping/completeness checks, raw-versus-distinct measures, no-write
+priority grouping and fresh private-directory output. It never reads `.env`, contacts
+a live database, stages `ImportRecord` rows, creates profiles or runs imports. It
+rejects excluded/missing/duplicate/tampered worksheet batches and refuses private
+output under tracked repository paths. Existing Phase 4/6 runtime code is unchanged.
+
+Focused tests: **68 passed** across `test_player_history_review.py` and the existing
+`test_player_registry.py`; Ruff F checks passed. Coverage includes fingerprint
+preservation, header exclusion, roster dates, zero registry/queue writes, exact
+worksheet enforcement, unapproved-source rejection, same-ID name changes, conflicting
+payloads, same-source name groups and private-output location refusal.
+
+Resolved: attribution approval for the 48 Season 3 application observations and
+43 Season 4 roster observations, plus their explicit review manifest/batches.
+Still unresolved: unnamed-tab attribution; individual identity/Xbox ownership
+evidence; designated reviewers/private evidence handling; a current approved registry/
+guild baseline; production service-account source access; isolated MariaDB staging
+validation/restore evidence; and separate approvals for every production write,
+deployment, feature flag, messaging and timestamp comparison. The incremental rollout
+below is unchanged. **Attribution approval is not identity or production import approval.**
+
 ## Release evidence and staging decision
 
 The branch was clean at `8f3f525` when validation began. Existing GitHub checks
@@ -63,7 +214,10 @@ instance and authorize its synthetic DDL test. Require:
 No such harness or instance is claimed validated here. This remains a release
 blocker; SQLite success cannot establish MariaDB DDL/locking behavior.
 
-## Two excluded archive sources: findings
+## Previously excluded archive sources: initial findings at 72c30ab
+
+The current attribution decisions and fresh ten-source totals above supersede
+the pending decisions in this retained initial investigation.
 
 Reads used the existing **Coastal Craft** Google Drive connection. Fresh workbook
 metadata grounded the tab names and bounds. Only headers, gamertags, and application
@@ -111,8 +265,9 @@ Source: [Coastal Members Season 4](https://docs.google.com/spreadsheets/d/1nOm20
 | `Sheet1` (`gid=0`) | Header row **4**, **43** nonblank/unique trimmed gamertags below it. Workbook title explicitly says Season 4; folder placement says Season 5. Twenty-one names also appear in the audited Season 3 roster | Additional Season 4 roster candidates, subject to owner approval of the season override. Read as historical roster observations, never applications or current Realm membership; do not invent an application date |
 | `Sheet2` (`gid=1455322091`) | Header includes Gamertag, Related to, Removal reason, Warning dates and Removal date; **5** nonblank gamertags | Removal/warning register, not an active-member roster or application adapter. Keep excluded. No moderation details read or used to infer current inactive status |
 
-The source title supports proposed `season:4`, `worksheet:"Sheet1"`, `header_row:4`,
-`trusted_discord_ids:false`. None of these settings was applied. Neither excluded
+The source title supported proposed `season:4`, `worksheet:"Sheet1"`, `header_row:4`,
+`trusted_discord_ids:false` at the initial review. These mappings are now approved
+in the review-only manifest above; production settings remain untouched. Neither excluded
 workbook provides an explicit trusted Discord-ID or XUID column in its inspected
 application/roster headers. Do not reinterpret contact, Band Name or Related to as
 authenticated Discord identity.
@@ -249,7 +404,7 @@ effects. No generic “Phase 6 approved” should obscure which writes/actions a
 | --- | --- | --- |
 | Exact release revision | Review focused diff, all head CI checks and immutable commit SHA | Base CI green; follow-up head CI must pass |
 | MariaDB isolation and validation | Verified distinct staging instance, grants, synthetic DDL/repeat/concurrency/restore results | **Blocked: no safely available instance identified** |
-| Source inclusion | Approve old `Season 3` tab and roster season 4; decide older unnamed application's season, five duplicates and separate tab batches | Findings prepared; no mapping applied |
+| Source inclusion | Approved `Season 3` tab and Season 4 roster prepared as exact review batches; unnamed tab and its five overlaps remain excluded | Attribution resolved for ten sources; no identity/import approval |
 | Identity/privacy review | Designated reviewers, source trust, private evidence retention, current guild-ID snapshot, conflict decisions | Workflow prepared; 73 records / 59 groups prioritized; no approvals made |
 | Production recovery | Independent restorable backup, table/flag baseline, maintenance owner and rollback trigger | Not performed/approved here |
 | Production DDL | Approve only additive ninth-table apply after staging evidence | Not approved/applied |

@@ -274,6 +274,12 @@ class EncryptedTokenStore:
         """Separate encrypted auxiliary record; never reads/writes account credentials."""
         return self._load_auxiliary("panel-sessions.realms.enc", "panel-sessions-v1")
 
+    def load_story_deliveries(self):
+        return self._load_auxiliary("story-deliveries.realms.enc", "story-deliveries-v1")
+
+    def save_story_deliveries(self, data):
+        self._save_auxiliary("story-deliveries.realms.enc", "story-deliveries-v1", data)
+
     def load_gamertags(self):
         return self._load_auxiliary("gamertags.realms.enc", "gamertags-v1")
 

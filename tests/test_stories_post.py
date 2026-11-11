@@ -49,7 +49,7 @@ def test_unknown_items_and_private_metadata_are_not_dumped():
         render_feed({'activityItems': {'activity': {}}})
     body = feed(); body['activityItems'] *= 12
     entries, skipped, remaining = render_feed(body)
-    assert len(entries) == 1 and skipped == 9 and remaining == 2
+    assert len(entries) == 1 and skipped == remaining == 0
 
 
 @pytest.mark.parametrize('url', ['http://example.blob.core.windows.net/a', 'https://localhost/a',
@@ -585,3 +585,54 @@ async def test_old_realm_debug_checks_role_before_io():
     await RealmCommands.storiesdebug.callback(cog, ctx, old_realm=True)
     api.club_story_feed.assert_not_awaited()
     api.stories_debug.assert_not_awaited()
+
+
+@pytest.mark.parametrize('likes,comments,expected', [(3, 2, '\u2764\ufe0f 3 \u00b7 \U0001f4ac 2'),
+    (None, None, '\u2764\ufe0f 0 \u00b7 \U0001f4ac 0'), (True, -1, '\u2764\ufe0f 0 \u00b7 \U0001f4ac 0')])
+def test_story_counter_footers(likes, comments, expected):
+    body = feed()
+    body['activityItems'][0].update(numLikes=likes, numComments=comments)
+    assert render_feed(body)[0][0][1].footer.text == expected
+
+
+def test_duplicate_minecraft_event_reference_combines_counts_and_matches_metadata_alias():
+    body = feed()
+    event_id = '12345678-1234-1234-1234-123456789abc'
+    first = body['activityItems'][0]
+    first.update(postContentLocators=[{'locatorType': 'MinecraftContent', 'locatorUri': event_id}], numLikes=3)
+    body['activityItems'].append(dict(first, feedItemId='second-id', numLikes=1, numComments=2))
+    body['realmEvents'] = [{'id': event_id, 'clubsPostId': 'second-id', 'eventName': 'NewMember', 'players': ['1']}]
+    body['playerNames'] = {'1': 'Sailor'}
+    entries, _, _ = render_feed(body)
+    assert len(entries) == 1 and entries[0][0] == 'event:' + event_id
+    assert entries[0][1].description == 'Sailor joined the Realm.'
+    assert entries[0][1].footer.text == '\u2764\ufe0f 3 \u00b7 \U0001f4ac 2'
+
+
+async def test_footer_updates_original_message_after_restart_and_handles_removed_hearts():
+    from unittest.mock import Mock
+    data = {}
+    store = NS(load_story_deliveries=Mock(side_effect=lambda: dict(data)),
+               save_story_deliveries=Mock(side_effect=lambda entries: data.update(entries)))
+    ctx = context()
+    body = feed()
+    body['activityItems'][0].update(numLikes=1, numComments=1)
+    api = NS(club_story_feed=AsyncMock(return_value=body), store=store)
+    bot = NS(settings=settings(), user=NS(id=999))
+    ctx.channel.send.return_value = NS(id=123)
+    cog = RealmCommands(bot, runtime=api)
+    await RealmCommands.storiespost.callback(cog, ctx)
+    embed = ctx.channel.send.call_args.kwargs['embed'].copy()
+    embed.set_image(url='https://cdn.discordapp.com/attachments/existing.png')
+    original = NS(id=123, author=NS(id=999), embeds=[embed], edit=AsyncMock())
+    ctx.channel.fetch_message = AsyncMock(return_value=original)
+    body['activityItems'][0].pop('numLikes')  # Omitted zero after removing a heart.
+    cog = RealmCommands(bot, runtime=api)  # New process/cog with persisted mapping.
+    await RealmCommands.storiespost.callback(cog, ctx)
+    assert ctx.channel.send.await_count == 1
+    ctx.channel.fetch_message.assert_awaited_once_with(123)
+    edited = original.edit.call_args.kwargs['embed']
+    assert edited.footer.text == '\u2764\ufe0f 0 \u00b7 \U0001f4ac 1'
+    assert edited.image.url == 'https://cdn.discordapp.com/attachments/existing.png'
+    await RealmCommands.storiespost.callback(cog, ctx)
+    assert original.edit.await_count == 1

@@ -8,6 +8,15 @@ precise activation gates](phase6-release-validation.md). That review starts at
 `8f3f525` and supersedes the previously unresolved source descriptions below;
 the original eight-source preview remains a separately scoped historical baseline.
 
+The owner's subsequent source-attribution decisions are now prepared in
+[`config/player-history-review.json`](../config/player-history-review.json), with
+an updated [765-observation / 524-fingerprint review](phase6-release-validation.md#revised-aggregate-preview)
+and [aggregate JSON](player-history-review-summary.json). The older `Season 3` tab
+and Season 4 roster are approved for attribution only; the unnamed application tab
+remains excluded. Private local dockets, priority batches, changed counts and remaining
+identity/import approvals are documented in the release review. The earlier 435-row
+preview below is historical evidence, not the current combined-source total.
+
 ## Audit before implementation
 
 The existing eight-table Peewee registry already supports canonical player IDs,

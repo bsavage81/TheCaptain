@@ -219,3 +219,37 @@ or empty cursors. Collected pages are retained and no zero-cursor request is mad
 Nonzero repeated cursors still fail rather than reporting an incomplete archive
 as complete. This fix is based on the public client fixture; the actual cursor
 from the production failure has not been inspected.
+
+## Heart/comment counters and message updates
+
+All rendered Stories carry a `heart N / comments N` footer using the observed
+`numLikes` and `numComments` fields. Omitted counters mean zero in the supplied
+before/after captures; malformed, negative and boolean values are ignored.
+`hasLiked` is not used to calculate the total. Comments themselves are not fetched.
+
+MinecraftContent UUID locators provide the canonical event identity, separate from
+Xbox feedItemId. Duplicate references collapse to one Story; counter maxima across
+the duplicate entries avoid adding the same event's counters twice. Screenshot IDs
+remain separate. Exact Realm-event IDs also enrich aliases whose Xbox post ID differs.
+No grouping by nearby time, text or author is used, and missing participant data is
+not replaced with the posting author's identity. Historical events without metadata
+can still retain generic upstream wording.
+
+After successful publication, encrypted auxiliary storage records the canonical
+Story key, destination, message ID and last footer. Re-running either posting command
+edits only changed footers on known bot-authored messages and retains existing embed
+artwork. Records survive restarts, and removed hearts/comments can decrease counts.
+No polling or scheduled automation is enabled. Deleted/unreadable original messages
+stop the operation rather than silently reposting. Checkpoints use the existing
+auxiliary store size protection; a failed save stops the operation. A process crash
+between Discord send and checkpoint save can still leave an untracked message.
+
+Older Discord posts created before this mapping existed cannot be identified safely
+and are not adopted by guessing their text. The first rebuilt backfill should use a
+fresh destination or an operator-managed cleanup of the previous backfill.
+
+Microsoft documents `minecraft://openRealmsStories?realmId=...` for opening a Realm's
+Stories feed, not an individual Story. The completion message includes a copyable
+feed URI. No unsupported custom-scheme Discord URL button or fabricated per-Story
+link is emitted. Launching it still depends on the user's installed Minecraft client.
+Source: https://learn.microsoft.com/en-us/minecraft/creator/reference/content/deep-links

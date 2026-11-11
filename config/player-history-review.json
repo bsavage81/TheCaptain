@@ -1,0 +1,138 @@
+{
+  "review_only": true,
+  "production_configuration": false,
+  "import_authorized": false,
+  "source_attribution_approved": true,
+  "sources": [
+    {
+      "batch_id": "source-1",
+      "season": 3,
+      "spreadsheet_id": "1-3s1Q_TxEm0jVp5g0QVJ8dwlatfBiw5VSRekViIQRDk",
+      "worksheet": "Sheet1",
+      "gid": 0,
+      "header_row": 4,
+      "evidence_kind": "roster",
+      "trusted_discord_ids": false,
+      "additional_source": false
+    },
+    {
+      "batch_id": "source-2",
+      "season": 4,
+      "spreadsheet_id": "1eqlTwo1NgyVKv0g6m42AuAtEhPnBmE2Q-2ABX5e8VIE",
+      "worksheet": "Form Responses 1",
+      "gid": 2035898059,
+      "header_row": 1,
+      "evidence_kind": "application",
+      "trusted_discord_ids": false,
+      "additional_source": false
+    },
+    {
+      "batch_id": "source-3",
+      "season": 5,
+      "spreadsheet_id": "1xErJYBCcwEDsYQsOAvtCXhJmQvLE0nln8Pw6hYuqR_g",
+      "worksheet": "Form Responses 1",
+      "gid": 1654870716,
+      "header_row": 1,
+      "evidence_kind": "application",
+      "trusted_discord_ids": false,
+      "additional_source": false
+    },
+    {
+      "batch_id": "source-4",
+      "season": 6,
+      "spreadsheet_id": "1tKv8yT5G_FigFj4AgQ0VjNH3WZ74ue2hZzaPzxV-pMw",
+      "worksheet": "Form Responses 1",
+      "gid": 805260317,
+      "header_row": 1,
+      "evidence_kind": "application",
+      "trusted_discord_ids": false,
+      "additional_source": false
+    },
+    {
+      "batch_id": "source-5",
+      "season": 7,
+      "spreadsheet_id": "1Gp739udTdrJ9sFyk6xJYtIZQl7k73u06Cs1uxXp1I9M",
+      "worksheet": "Form Responses 1",
+      "gid": 145378720,
+      "header_row": 1,
+      "evidence_kind": "application",
+      "trusted_discord_ids": false,
+      "additional_source": false
+    },
+    {
+      "batch_id": "source-6",
+      "season": 8,
+      "spreadsheet_id": "1TudYa9i1509mN0xVAh0zRjm8gi69LsSBhy5QMWRjp_g",
+      "worksheet": "Form Responses 1",
+      "gid": 145378720,
+      "header_row": 2,
+      "evidence_kind": "application",
+      "trusted_discord_ids": true,
+      "additional_source": false
+    },
+    {
+      "batch_id": "source-7",
+      "season": 9,
+      "spreadsheet_id": "1tgIB6ge4xYWY0IOIVqGN70Bv8-xJ-wminoIphNCqjt0",
+      "worksheet": "Form Responses 1",
+      "gid": 145378720,
+      "header_row": 2,
+      "evidence_kind": "application",
+      "trusted_discord_ids": true,
+      "additional_source": false
+    },
+    {
+      "batch_id": "source-8",
+      "season": 10,
+      "spreadsheet_id": "1ltMnItNgDBk5FhgsC-afi0l17OBnfOTcKPIkcSw9zvE",
+      "worksheet": "Form Responses 1",
+      "gid": 145378720,
+      "header_row": 2,
+      "evidence_kind": "application",
+      "trusted_discord_ids": true,
+      "additional_source": false
+    },
+    {
+      "batch_id": "source-9",
+      "season": 3,
+      "spreadsheet_id": "1P0xHNd-Y9xWfxwfTIn2CyYteQ4DYT0pvJ49zdeshwU0",
+      "worksheet": "Season 3",
+      "gid": 107533011,
+      "header_row": 1,
+      "evidence_kind": "application",
+      "trusted_discord_ids": false,
+      "additional_source": true
+    },
+    {
+      "batch_id": "source-10",
+      "season": 4,
+      "spreadsheet_id": "1nOm20g7W3zGhh-kCMWw33OrFIDz67zZPQxDZlqJ198g",
+      "worksheet": "Sheet1",
+      "gid": 0,
+      "header_row": 4,
+      "evidence_kind": "roster",
+      "trusted_discord_ids": false,
+      "additional_source": true
+    }
+  ],
+  "excluded": [
+    {
+      "spreadsheet_id": "1P0xHNd-Y9xWfxwfTIn2CyYteQ4DYT0pvJ49zdeshwU0",
+      "worksheet": "Form Responses 1",
+      "gid": 1332515138,
+      "reason": "season_not_approved"
+    },
+    {
+      "spreadsheet_id": "1P0xHNd-Y9xWfxwfTIn2CyYteQ4DYT0pvJ49zdeshwU0",
+      "worksheet": "Easy View",
+      "gid": 1511099061,
+      "reason": "secondary_view"
+    },
+    {
+      "spreadsheet_id": "1nOm20g7W3zGhh-kCMWw33OrFIDz67zZPQxDZlqJ198g",
+      "worksheet": "Sheet2",
+      "gid": 1455322091,
+      "reason": "moderation_register"
+    }
+  ]
+}
