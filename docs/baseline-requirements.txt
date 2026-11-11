@@ -17,7 +17,7 @@ frozenlist==1.8.0
 google-auth-oauthlib==1.5.0
 google-auth==2.62.0
 gspread==5.12.4
-httplib2==0.32.0
+httplib2==0.32.1
 idna==3.20
 import_expression==1.1.5
 iniconfig==2.3.1
