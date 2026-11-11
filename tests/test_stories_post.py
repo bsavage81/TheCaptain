@@ -392,10 +392,9 @@ async def test_old_stories_requires_op_team():
 
 async def test_archive_runtime_resolves_name_and_isolates_client(monkeypatch):
     from contextlib import asynccontextmanager
-    from utils.integrations.realms.models import Realm
     from unittest.mock import Mock
     rt = runtime()
-    rt.client.list_realms = AsyncMock(return_value=NS(data=[Realm('77', 'Old Coastal 10', 'CLOSED', None)]))
+    rt.client.old_stories_realm_id = AsyncMock(return_value='77')
     rt.client.authorization = AsyncMock()
     rt.client.principal = object()
     original_config = rt.config
@@ -418,15 +417,14 @@ async def test_archive_runtime_resolves_name_and_isolates_client(monkeypatch):
 
 @pytest.mark.parametrize('names', [[], ['Unrelated Realm'], ['Old Coastal 10', 'old coastal 10']])
 async def test_archive_missing_or_ambiguous_name_never_reads_feed(names):
-    from utils.integrations.realms.models import Realm
-    rt = runtime()
-    rt.client.list_realms = AsyncMock(return_value=NS(data=[Realm(str(i+70), name, 'OPEN', None)
-                                                         for i, name in enumerate(names)]))
-    rt.client.club_story_feed = AsyncMock()
-    with pytest.raises(ProtocolError):
-        await rt.club_story_feed(old_realm=True)
-    rt.client.club_story_feed.assert_not_awaited()
-    await rt.close()
+    from utils.integrations.realms.errors import StoriesError
+    response = {'servers': [{'id': i+70, 'name': name, 'state': 'UNINITIALIZED'}
+                            for i, name in enumerate(names)]}
+    http = FakeHTTP(Response(200, response))
+    with pytest.raises(StoriesError) as error:
+        await client(http).old_stories_realm_id()
+    assert error.value.reason == ('realm_ambiguous' if len(names) == 2 else 'realm_missing')
+    assert len(http.calls) == 1
 
 
 async def test_archive_reads_every_cursor_page_with_encoded_same_club_url():
@@ -476,3 +474,53 @@ async def test_archive_posts_past_session_guard_and_ten_item_limit():
     await RealmCommands.oldstoriespost.callback(cog, ctx)
     assert ctx.channel.send.await_count == 12
     assert '10-item limit' not in ctx.followup.send.call_args.args[0]
+
+
+async def test_archive_lookup_ignores_uninitialized_slots_and_minecraft_name_formatting():
+    body = {'servers': [{'id': 99, 'name': None, 'state': 'UNINITIALIZED'},
+                        {'id': 77, 'name': '  \u00a7aOld \u00a7lCoastal 10\u00a7r ', 'state': 'CLOSED'}]}
+    http = FakeHTTP(Response(200, body))
+    assert await client(http).old_stories_realm_id() == '77'
+    assert len(http.calls) == 1
+
+
+@pytest.mark.parametrize('reason', ['realm_missing', 'realm_ambiguous', 'realm_list',
+                                  'realm_feed', 'club_reference', 'club_page',
+                                  'cursor_repeat', 'cursor_invalid', 'archive_fetch'])
+async def test_archive_error_reports_fixed_reason_and_never_posts(reason):
+    from utils.integrations.realms.errors import StoriesError
+    ctx = context()
+    api = NS(club_story_feed=AsyncMock(side_effect=StoriesError(reason)))
+    cog = RealmCommands(NS(settings=settings()), runtime=api)
+    await RealmCommands.oldstoriespost.callback(cog, ctx)
+    assert reason in ctx.followup.send.call_args.args[0]
+    assert ctx.followup.send.call_args.kwargs['ephemeral']
+    ctx.channel.send.assert_not_awaited()
+
+
+@pytest.mark.parametrize('date,included', [
+    ('2026-10-31T04:59:59Z', False),
+    ('2026-10-31T05:00:00Z', True),
+    ('2026-11-01T12:00:00Z', True),
+    ('2026-11-11T12:00:00Z', True),
+    ('2026-11-11T12:00:01Z', False),
+    (None, False), ('invalid', False),
+])
+def test_archive_date_window_uses_chicago_midnight_and_excludes_undated_or_future(date, included):
+    from datetime import datetime, timezone
+    from zoneinfo import ZoneInfo
+    body = feed()
+    body['activityItems'][0]['date'] = date
+    entries, skipped, remaining = render_feed(body, limit=None,
+        since=datetime(2026, 10, 31, tzinfo=ZoneInfo('America/Chicago')),
+        until=datetime(2026, 11, 11, 12, tzinfo=timezone.utc))
+    assert len(entries) == int(included)
+    assert skipped == int(not included) and remaining == 0
+
+
+def test_archive_date_filter_uses_event_timestamp_over_club_post_date():
+    from datetime import datetime, timezone
+    body = feed()
+    body['realmEvents'] = [{'clubsPostId': 'private-id', 'eventName': 'NewMember',
+                            'timestamp': '2026-10-01T00:00:00Z'}]
+    assert not render_feed(body, limit=None, since=datetime(2026, 10, 31, 5, tzinfo=timezone.utc))[0]

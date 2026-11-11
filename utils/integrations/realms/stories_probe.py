@@ -30,14 +30,14 @@ def probe_urls(body):
 
 def next_club_page(base_url, body):
     """Build a same-club URL from an opaque token, never an upstream URL."""
-    from .errors import ProtocolError
+    from .errors import StoriesError
     if not isinstance(body, dict):
-        raise ProtocolError()
+        raise StoriesError('club_page')
     token = body.get('contToken')
     if token in (None, ''):
         return None
     if not isinstance(token, str) or len(token) > 16384:
-        raise ProtocolError()
+        raise StoriesError('cursor_invalid')
     return base_url + '&' + urlencode({'contToken': token})
 
 

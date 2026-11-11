@@ -183,7 +183,7 @@ class RealmCommands(commands.Cog):
             return
         await interaction.response.defer(ephemeral=True, thinking=True)
         from .stories_feed import render_feed, artwork_file
-        from utils.integrations.realms.errors import HTTPFailure
+        from utils.integrations.realms.errors import HTTPFailure, StoriesError, RealmsError
         posted = 0
         try:
             async with self._stories_post_lock:
@@ -197,7 +197,14 @@ class RealmCommands(commands.Cog):
                     await interaction.followup.send("I need View Channel, Send Messages, and Embed Links here.", ephemeral=True)
                     return
                 body = await self.runtime.club_story_feed(old_realm=True) if old_realm else await self.runtime.club_story_feed()
-                entries, skipped, remaining = render_feed(body, limit=None if old_realm else 10)
+                if old_realm:
+                    from datetime import datetime, timezone
+                    from zoneinfo import ZoneInfo
+                    since = datetime(2026, 10, 31, tzinfo=ZoneInfo('America/Chicago'))
+                    entries, skipped, remaining = render_feed(body, limit=None, since=since,
+                                                              until=datetime.now(timezone.utc))
+                else:
+                    entries, skipped, remaining = render_feed(body)
                 if any((embed.image.url or '').startswith('attachment://') for _, embed in entries) and not permissions.attach_files:
                     await interaction.followup.send("I need Attach Files here to include Realm event artwork.", ephemeral=True)
                     return
@@ -222,14 +229,18 @@ class RealmCommands(commands.Cog):
                             attachment.close()
                     self._stories_sent.add(key)
                     posted += 1
-                source_label = " from Old Coastal 10" if old_realm else ""
+                source_label = " from Old Coastal 10 (October 31, 2026 to now, America/Chicago)" if old_realm else ""
                 message = f"Posted {posted} Stories embed(s){source_label} in this channel, oldest first. Skipped {skipped} unsupported item(s), {duplicates} already posted."
                 if not old_realm:
                     message += f" {remaining} beyond the 10-item limit."
                 if skipped:
-                    message += " Some feed fields or media references are not yet recognized; no raw metadata was published."
+                    message += " Items outside the date range, without a usable date, or with unsupported content were skipped." if old_realm else " Some feed fields or media references are not yet recognized; no raw metadata was published."
+        except StoriesError as error:
+            message = f"Posted {posted} Stories embed(s). {StoriesError.reasons[error.reason]} (Code: {error.reason}.)"
         except HTTPFailure as error:
             message = f"Posted {posted} Stories embed(s). Feed unavailable (HTTP {error.status}); no feed retry made."
+        except RealmsError as error:
+            message = f"Posted {posted} Stories embed(s). Stopped: {error.category}. No private error details shown."
         except Exception:
             message = f"Posted {posted} Stories embed(s). Stopped: Stories access, response format, channel permissions, or authorization unavailable. No private error details shown."
         await interaction.followup.send(message, ephemeral=True, allowed_mentions=discord.AllowedMentions.none())

@@ -194,3 +194,18 @@ survive a later send failure in that session. Restarting loses that protection.
 Persistent delivery checkpoints should be added before enabling recurring automatic
 posting. No automation is enabled by this change. Long backfills can outlast the
 Discord interaction token, although channel sends use the bot's authentication.
+
+## Archive date window and lookup diagnostics
+
+Old-Realm posts are limited to October 31, 2026 at midnight America/Chicago
+(inclusive) through the command's current time. Items with no usable timestamp,
+older items, and future-dated items are skipped. Event timestamps take priority
+over club-post dates. The current-Realm command is unchanged by this date filter.
+All exposed archive pages are still read so page ordering cannot hide eligible posts.
+
+Archive name resolution ignores Minecraft formatting codes and parses only the
+matched Realm's ID/name, avoiding unrelated uninitialized slots. Missing/ambiguous
+names, malformed club responses, and cursor failures now return fixed diagnostic
+codes without private IDs, names, tokens, URLs or response content. These lookup
+edge cases and date boundaries are covered offline; the actual production failure
+has not been reproduced locally.

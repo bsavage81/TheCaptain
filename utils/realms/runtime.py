@@ -234,21 +234,21 @@ class RealmRuntime:
                 async with asyncio.timeout(None if old_realm else 120):
                     if old_realm:
                         from utils.integrations.realms.client import RealmsClient
-                        from utils.integrations.realms.errors import ProtocolError
-                        realms = await self.client.list_realms()
-                        matches = [realm for realm in realms.data
-                                   if realm.name.strip().casefold() == 'old coastal 10']
-                        if len(matches) != 1:
-                            raise ProtocolError()
-                        target = matches[0]
+                        from utils.integrations.realms.errors import StoriesError
+                        target_id = await self.client.old_stories_realm_id()
                         # Separate client and transport: never mutate the live target,
                         # its caches, or the transport's selected-Realm allowlist.
-                        async with self._transport_factory(selected_realm_id=target.id) as transport:
+                        async with self._transport_factory(selected_realm_id=target_id) as transport:
                             archive = RealmsClient(transport, self.client.authorization,
-                                                  replace(self.config, selected_realm_id=target.id),
+                                                  replace(self.config, selected_realm_id=target_id),
                                                   self.client.principal)
-                            body = await archive.club_story_feed(all_pages=True)
-                        body = dict(body, sourceRealmId=target.id)
+                            try:
+                                body = await archive.club_story_feed(all_pages=True)
+                            except (StoriesError, HTTPFailure):
+                                raise
+                            except Exception:
+                                raise StoriesError('archive_fetch') from None
+                        body = dict(body, sourceRealmId=target_id)
                     else:
                         body = await self.client.club_story_feed()
                     if self.names is not None:

@@ -216,7 +216,7 @@ def realm_event_text(event, names):
     return title, text
 
 
-def render_feed(body, *, limit=10):
+def render_feed(body, *, limit=10, since=None, until=None):
     """Return (opaque ID, embed) pairs, plus skipped/remaining counts."""
     if not isinstance(body, dict) or not isinstance(body.get('activityItems'), list):
         raise ProtocolError()
@@ -275,6 +275,12 @@ def render_feed(body, *, limit=10):
         title = 'Realm Screenshot' if item.get('activityItemType') == 'Screenshot' else ('Realm Event' if item.get('contentType') == 'System' else 'Realm Story')
         embed = discord.Embed(title=event_title or title, description=text or None, colour=0x55AA55,
                               timestamp=(timestamp(event.get('timestamp')) if event else None) or timestamp(item.get('date')))
+        if since is not None and (embed.timestamp is None or embed.timestamp < since):
+            skipped += 1
+            continue
+        if until is not None and (embed.timestamp is None or embed.timestamp > until):
+            skipped += 1
+            continue
         author = item.get('authorInfo')
         if isinstance(author, dict) and event is None:
             name = author.get('modernGamertag') or author.get('name')

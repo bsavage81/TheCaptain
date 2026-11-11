@@ -59,3 +59,25 @@ class HTTPFailure(RealmsError):
         super().__init__()
 
     category = "upstream_http_failed"
+
+
+class StoriesError(ProtocolError):
+    """Fixed diagnostic codes only; no names, IDs, cursors or response bodies."""
+    category = 'stories_failed'
+    reasons = {
+        'realm_missing': 'No accessible Realm named Old Coastal 10 was found.',
+        'realm_ambiguous': 'More than one accessible Realm matches Old Coastal 10.',
+        'realm_list': 'The accessible Realm list could not be read.',
+        'realm_feed': 'The old Realm Stories response could not be read.',
+        'club_reference': 'The Realm Stories response has no usable Xbox club reference.',
+        'club_page': 'An Xbox Stories page had an unsupported response format.',
+        'cursor_repeat': 'Xbox repeated a Stories page cursor; archive fetching stopped to avoid a loop.',
+        'cursor_invalid': 'Xbox returned an unsupported Stories page cursor.',
+        'archive_fetch': 'The old Realm Stories fetch failed before publication.',
+    }
+
+    def __init__(self, reason):
+        if reason not in self.reasons:
+            raise ValueError('Unsupported Stories error reason')
+        self.reason = reason
+        super().__init__()

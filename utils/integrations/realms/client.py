@@ -2,7 +2,7 @@
 import asyncio
 import random
 
-from .errors import AccessDenied, HTTPFailure, ProtocolError
+from .errors import AccessDenied, HTTPFailure, ProtocolError, StoriesError
 from .models import Activity, Invitation, Realm, Snapshot, members, realm_id, text, utcnow
 from .transport import REALMS_HOST, STORIES_HOST
 
@@ -71,21 +71,51 @@ class RealmsClient:
             raise AccessDenied()
         return await self.request("GET", "/api/v1.0/worlds/" + self.config.selected_realm_id + "/stories")
 
+    async def old_stories_realm_id(self):
+        """Resolve the archive from names/IDs without parsing unrelated live state."""
+        import re
+        try:
+            body = await self.request('GET', '/worlds')
+        except HTTPFailure:
+            raise
+        except Exception:
+            raise StoriesError('realm_list') from None
+        if not isinstance(body, dict) or not isinstance(body.get('servers'), list):
+            raise StoriesError('realm_list')
+        matches = []
+        for server in body['servers']:
+            if not isinstance(server, dict) or not isinstance(server.get('name'), str):
+                continue
+            name = re.sub(r'\u00a7[0-9a-z]', '', server['name'], flags=re.IGNORECASE)
+            if name.strip().casefold() == 'old coastal 10':
+                try:
+                    matches.append(realm_id(server.get('id')))
+                except ProtocolError:
+                    raise StoriesError('realm_list') from None
+        if not matches:
+            raise StoriesError('realm_missing')
+        if len(matches) != 1:
+            raise StoriesError('realm_ambiguous')
+        return matches[0]
+
     async def club_story_feed(self, *, all_pages=False):
         """Read club Stories, optionally following every returned continuation token."""
         from .stories_probe import probe_urls
         from .transport import XBOX_RP
-        realm_feed = await self.story_feed()
+        try:
+            realm_feed = await self.story_feed()
+        except ProtocolError:
+            raise StoriesError('realm_feed') from None
         urls = probe_urls(realm_feed)
         if urls is None:
-            raise ProtocolError()
+            raise StoriesError('club_reference')
         from .stories_probe import next_club_page
         self.config.authorize(self.principal)
         token = await self.authorization(self.principal, audience=XBOX_RP)
         url, seen, items = urls[1], set(), []
         while url is not None:
             if url in seen:
-                raise ProtocolError()
+                raise StoriesError('cursor_repeat')
             seen.add(url)
             self.config.authorize(self.principal)
             response = await self.transport.request("GET", url, headers={
@@ -96,7 +126,7 @@ class RealmsClient:
             if response.status != 200:
                 raise HTTPFailure(response.status, response.retry_after)
             if not isinstance(response.body, dict) or not isinstance(response.body.get('activityItems'), list):
-                raise ProtocolError()
+                raise StoriesError('club_page')
             if not all_pages:
                 return dict(response.body, realmEvents=realm_feed["result"])
             items.extend(response.body['activityItems'])
