@@ -245,6 +245,22 @@ def test_resolved_event_names_and_group_join_wording():
     assert render_feed(body)[0][0][1].description == 'Sailor2 discovered enchanting.'
 
 
+def test_pillager_captain_uses_event_participant_not_posting_author():
+    body = feed()
+    body['activityItems'][0].pop('screenshotUri')
+    body['activityItems'][0]['authorInfo'].update(id='999')
+    body['realmEvents'] = [{'clubsPostId': 'private-id',
+                            'eventName': 'PillagerCaptainDefeated', 'players': ['123']}]
+    body['playerNames'] = {'123': 'SyntheticSailor'}
+    embed = render_feed(body)[0][0][1]
+    assert embed.title == 'Pillager Captain defeated'
+    assert embed.description == 'SyntheticSailor defeated a Pillager Captain.'
+    assert embed.image.url == 'attachment://PillagerCaptainDefeated.png'
+    assert 'Builder' not in embed.description
+    body['playerNames'] = {}
+    assert render_feed(body)[0][0][1].description == 'A player defeated a Pillager Captain.'
+
+
 async def test_runtime_resolves_event_ids_with_existing_cache_and_keeps_feed_on_failure():
     body = dict(feed(), realmEvents=[{'players': ['123', '456', '123']}])
     rt = runtime(); rt.client.club_story_feed = AsyncMock(return_value=body)
@@ -310,3 +326,43 @@ def test_missing_artwork_keeps_text(monkeypatch, tmp_path):
     embed = render_feed(body)[0][0][1]
     assert embed.description == 'A player joined the Realm.'
     assert not embed.image.url
+
+
+@pytest.mark.parametrize('kind,expected', [
+    ('FirstDiamondFound', 'SyntheticSailor found a diamond.'),
+    ('FirstConduit', 'SyntheticSailor now commands the sea.'),
+    ('FirstEndPortal', 'SyntheticSailor traveled to the End?'),
+    ('FirstPoweredBeacon', 'SyntheticSailor powered a Beacon!'),
+    ('FirstEnderDragonDefeated', 'The Ender Dragon was defeated!'),
+    ('FirstWitherDefeated', 'The Wither was defeated!'),
+    ('NamedMob', 'SyntheticSailor has a new friend.'),
+    ('NamedMobDies', 'A named mob met an untimely death.'),
+    ('SlotSwitch', 'The Realm world changed.'),
+])
+def test_verified_event_wording_and_nonplayer_fallbacks(kind, expected):
+    from utils.realms.stories_feed import realm_event_text
+    event = {'eventName': kind, 'players': ['123'], 'metadata': 'private-canary'}
+    assert realm_event_text(event, {'123': 'SyntheticSailor'})[1] == expected
+
+
+@pytest.mark.parametrize('kind,expected', [
+    ('DefeatEnderdragon', 'The Ender Dragon was defeated!... again.'),
+    ('DefeatWither', 'The Wither was defeated!... again.'),
+    ('DiamondEverything', 'Sailor1 and Sailor2 have full diamond sets.'),
+    ('FirstDiamondFound', 'Sailor1 found a diamond.'),
+])
+def test_grouped_variants_and_single_actor_events(kind, expected):
+    from utils.realms.stories_feed import realm_event_text
+    assert realm_event_text({'eventName': kind, 'players': ['1', '2']},
+                            {'1': 'Sailor1', '2': 'Sailor2'})[1] == expected
+
+
+def test_all_verified_event_templates_render_without_placeholders():
+    from utils.realms.stories_feed import EVENT_TEXT, realm_event_text
+    kinds = [kind for kind in EVENT_TEXT if not kind.endswith('.grouped')]
+    assert len(kinds) == 30
+    for kind in kinds:
+        for players in (None, [], ['1'], ['1', '2']):
+            text = realm_event_text({'eventName': kind, 'players': players}, {'1': 'Sailor'})[1]
+            assert '%1$s' not in text and '%2$s' not in text
+            assert text != 'A Realm event was recorded.'

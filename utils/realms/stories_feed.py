@@ -130,11 +130,48 @@ def timestamp(value):
         return None
 
 
-EVENTS = {
-    'NewMember': ('New Realm member', 'joined the Realm'),
-    'FirstCraftedNetherite': ('Upgraded to Netherite', 'upgraded to Netherite'),
-    'FirstEnchantment': ('Discovered enchanting', 'discovered enchanting'),
+# Verified Minecraft en_US.lang feedEvent templates.
+EVENT_TEXT = {
+    'FirstEnderDragonDefeated': 'The Ender Dragon was defeated!',
+    'FirstWitherDefeated': 'The Wither was defeated!',
+    '250HostileMobs': '%1$s cannot be defeated by mere mobs',
+    '250HostileMobs.grouped': '%1$s cannot be defeated by mere mobs',
+    'AllMobNameEasterEggs': '%1$s created all the mystery mobs',
+    'AllMobNameEasterEggs.grouped': '%1$s created all the mystery mobs',
+    'CookEverything': '%1$s prepared a 13 course meal',
+    'DefeatEnderdragon': '%1$s defeated the Ender Dragon!... again',
+    'DefeatEnderdragon.grouped': 'The Ender Dragon was defeated!... again',
+    'DefeatWither': '%1$s defeated the Wither!... again',
+    'DefeatWither.grouped': 'The Wither was defeated!... again',
+    'DiamondEverything': '%1$s has a full diamond set',
+    'DiamondEverything.grouped': '%1$s have full diamond sets',
+    'FirstAbandonedMineshaftFound': '%1$s discovered an Abandoned Mineshaft',
+    'FirstAncientCityFound': '%1$s discovered an Ancient City',
+    'FirstBadlandsFound': '%1$s discovered a Badlands',
+    'FirstConduit': '%1$s now commands the sea',
+    'FirstCraftedNetherite': '%1$s upgraded to Netherite',
+    'FirstCraftedNetherite.grouped': '%1$s upgraded to Netherite',
+    'FirstDiamondFound': '%1$s found a diamond',
+    'FirstEnchantment': '%1$s discovered enchanting',
+    'FirstEnchantment.grouped': '%1$s discovered enchanting',
+    'FirstEndPortal': '%1$s traveled to the End?',
+    'FirstFullyExploredMap': '%1$s started mapping the world',
+    'FirstMushroomFieldFound': '%1$s discovered a Mushroom Field',
+    'FirstNetherFortressFound': '%1$s discovered a Nether Fortress',
+    'FirstNetherPortalLit': '%1$s created a portal to the Nether',
+    'FirstPeakMountainFound': '%1$s scaled a Mountain Peak',
+    'FirstPillagerOutpostFound': '%1$s discovered a Pillager Outpost',
+    'FirstPoweredBeacon': '%1$s powered a Beacon!',
+    'FirstWoodlandMansionFound': '%1$s discovered a Woodland Mansion',
+    'NamedMob': '%1$s has a new friend, %2$s',
+    'NamedMobDies': '%1$s met an untimely death',
+    'NewMember': '%1$s joined the Realm',
+    'NewMember.grouped': '%1$s joined the Realm',
+    'PillagerCaptainDefeated': '%1$s defeated a Pillager Captain',
+    'RealmCreated': 'A new adventure has begun! What will the story of this Realm be? You decide.',
+    'SlotSwitch': 'The world changed to %1$s',
 }
+EVENT_TITLES = {'NewMember': 'New Realm member', 'FirstCraftedNetherite': 'Upgraded to Netherite', 'FirstEnchantment': 'Discovered enchanting', 'PillagerCaptainDefeated': 'Pillager Captain defeated', 'RealmCreated': 'Realm created'}
 
 
 def player_phrase(event, names):
@@ -153,12 +190,30 @@ def player_phrase(event, names):
 
 def realm_event_text(event, names):
     kind = event.get('eventName')
-    if kind == 'RealmCreated':
-        return 'Realm created', 'A new adventure has begun! What will the story of this Realm be? You decide.'
-    if isinstance(kind, str) and kind in EVENTS:
-        title, action = EVENTS[kind]
-        return title, player_phrase(event, names) + ' ' + action + '.'
-    return 'Realm Event', 'A Realm event was recorded.'
+    if not isinstance(kind, str) or kind not in EVENT_TEXT:
+        return 'Realm Event', 'A Realm event was recorded.'
+    title = EVENT_TITLES.get(kind, 'Realm Event')
+    # These substitutions are not player identities. Until their payload fields
+    # are verified, describe the event without guessing a mob or world name.
+    if kind == 'NamedMobDies':
+        return title, 'A named mob met an untimely death.'
+    if kind == 'SlotSwitch':
+        return title, 'The Realm world changed.'
+    players = event.get('players')
+    players = list(dict.fromkeys(p for p in players if isinstance(p, str))) if isinstance(players, list) else []
+    if kind == 'NamedMob':
+        return title, player_phrase(dict(event, players=players[:1]), names) + ' has a new friend.'
+    template = EVENT_TEXT[kind]
+    grouped = kind + '.grouped'
+    if len(players) > 1 and grouped in EVENT_TEXT:
+        template = EVENT_TEXT[grouped]
+        subject = player_phrase(dict(event, players=players), names)
+    else:
+        subject = player_phrase(dict(event, players=players[:1]), names)
+    text = template.replace('%1$s', subject)
+    if not text.endswith(('.', '!', '?')):
+        text += '.'
+    return title, text
 
 
 def render_feed(body):

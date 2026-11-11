@@ -142,3 +142,17 @@ the repository and do not require Minecraft to be installed on the bot host.
 
 Restart after deployment before repeating `/realm storiespost`, because its existing
 session duplicate guard still skips previously sent entries. No command sync needed.
+
+## Verified event text
+
+All 30 event types from the installed English language file now have text handling;
+see `minecraft-stories-text-reference.md` for the source templates. Grouped variants
+apply only where defined by Minecraft, including impersonal boss rematches and
+plural diamond-set wording. Other player events use the first participant, matching
+the installed UI formatter. Existing grouped name limits and safe escaping remain.
+
+Mob-name and world-name payload fields have not been verified. NamedMob therefore
+uses the first participant with "has a new friend", NamedMobDies uses "A named mob
+met an untimely death", and SlotSwitch uses "The Realm world changed". These do not
+substitute a player name for a mob or world, or expose arbitrary metadata. EasyAndSafe
+retains the generic fallback because no event text was found for that asset.
