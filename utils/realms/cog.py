@@ -246,14 +246,19 @@ class RealmCommands(commands.Cog):
         await interaction.followup.send(message, ephemeral=True, allowed_mentions=discord.AllowedMentions.none())
 
     @realm.command(name="storiesdebug", description="Inspect Realm Stories and referenced Xbox posts (staff only)")
-    async def storiesdebug(self, interaction: discord.Interaction):
+    @app_commands.describe(old_realm="Inspect OLD Coastal S10 instead of the current Realm")
+    async def storiesdebug(self, interaction: discord.Interaction, old_realm: bool = False):
         if not permitted(self.bot.settings, interaction):
             await interaction.response.send_message("Realm commands require the Coastal OP Team role in Coastal Craft.", ephemeral=True)
             return
         await interaction.response.defer(ephemeral=True, thinking=True)
         from utils.integrations.realms.errors import HTTPFailure, ReauthRequired
         try:
-            message = await self.runtime.stories_debug()
+            if old_realm:
+                message = {'source': 'old_realm', 'club_feed': {
+                    'http_status': 200, 'body': await self.runtime.club_story_feed(old_realm=True)}}
+            else:
+                message = await self.runtime.stories_debug()
         except HTTPFailure as error:
             message = f"Stories feed HTTP status: {error.status}. Response not inspected or request rejected; no feed retry made."
             if error.status in {401, 403}:
@@ -270,7 +275,11 @@ class RealmCommands(commands.Cog):
                 serialized = json.dumps(message, ensure_ascii=False, separators=(",", ":"))
             report = discord.File(io.BytesIO(serialized.encode("utf-8", errors="backslashreplace")), filename="realm-stories-investigation.json")
             await interaction.followup.send(
-                "Stories investigation attached: Realm feed, one referenced Xbox post, and one club-feed page (up to 10 items). Successful response bodies are unredacted; failures include status when available. No retries or images fetched.",
+                ("Old Realm Stories diagnostic attached: all available Xbox club-feed pages and Realm event references. "
+                 "Run before and after giving one heart to the same Story, then compare the attachments. "
+                 "The attachment includes private Realm content; no auth headers or tokens are included. No Discord Stories were posted."
+                 if old_realm else
+                 "Stories investigation attached: Realm feed, one referenced Xbox post, and one club-feed page (up to 10 items). Successful response bodies are unredacted; failures include status when available. No retries or images fetched."),
                 file=report, ephemeral=True, allowed_mentions=discord.AllowedMentions.none())
         elif message.startswith("HTTP status: 200\n\n"):
             # Only the response body is attached. Request headers and auth state

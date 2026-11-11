@@ -553,3 +553,35 @@ async def test_archive_first_page_zero_cursor_still_keeps_posts():
     http = FakeHTTP(Response(200, BODY), Response(200, dict(feed(), contToken='0')))
     result = await client(http).club_story_feed(all_pages=True)
     assert len(result['activityItems']) == 1 and len(http.calls) == 2
+
+
+async def test_old_realm_debug_captures_feed_without_publishing_stories():
+    import json
+    ctx = context()
+    body = dict(feed(), sourceRealmId='77', contToken='0')
+    body['activityItems'][0].update(numLikes=2, hasLiked=True)
+    api = NS(club_story_feed=AsyncMock(return_value=body), stories_debug=AsyncMock())
+    cog = RealmCommands(NS(settings=settings()), runtime=api)
+    await RealmCommands.storiesdebug.callback(cog, ctx, old_realm=True)
+    api.club_story_feed.assert_awaited_once_with(old_realm=True)
+    api.stories_debug.assert_not_awaited()
+    ctx.channel.send.assert_not_awaited()
+    kwargs = ctx.followup.send.call_args.kwargs
+    assert kwargs['ephemeral']
+    attachment = kwargs['file']
+    try:
+        report = json.load(attachment.fp)
+        assert report['club_feed']['body']['activityItems'][0]['numLikes'] == 2
+        assert report['club_feed']['body']['activityItems'][0]['hasLiked'] is True
+        assert report['source'] == 'old_realm'
+    finally:
+        attachment.close()
+
+
+async def test_old_realm_debug_checks_role_before_io():
+    ctx = interaction(roles=())
+    api = NS(club_story_feed=AsyncMock(), stories_debug=AsyncMock())
+    cog = RealmCommands(NS(settings=settings()), runtime=api)
+    await RealmCommands.storiesdebug.callback(cog, ctx, old_realm=True)
+    api.club_story_feed.assert_not_awaited()
+    api.stories_debug.assert_not_awaited()

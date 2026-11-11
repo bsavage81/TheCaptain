@@ -70,3 +70,24 @@ The club-feed route and contract version come from
 [RealmHelper](https://github.com/MrSterdy/RealmHelper/blob/a21ea091cefdc178d8c8b747157a01220d9ee5dc/src/RealmHelper.Infrastructure/Api/XboxLiveApi.cs).
 Development tests use synthetic data. Live Xbox access, current schemas and
 screenshot availability remain unverified until this command runs on the server.
+
+## Inspect old-Realm heart changes
+
+`/realm storiesdebug old_realm:true` privately attaches the combined club feed
+(all available pages) and Realm-event references for OLD Coastal S10, using the
+existing archive fetch path. It does not post Stories or add Discord reactions.
+The current-Realm diagnostic remains the default. Sync commands after deploying
+the new optional argument.
+
+Capture one attachment immediately before adding a heart to one known Story in
+Minecraft, then another immediately afterward. Compare post IDs, activity types,
+like/count fields and target references. Exact API fields must be established from
+these captures; synthetic test field names are not evidence of the live schema.
+The attachment contains private content, but no request headers or auth tokens.
+
+Generic system notices in the pasted backfill are not proof of heart activity:
+the renderer also emits club-system text when its exact feedItemId has no matching
+Realm clubsPostId. Inspect IDs and reference shapes before suppressing such items.
+Future reaction synchronization needs an original Story-to-Discord-message mapping.
+A bot can add one heart of its own per message, not impersonate Minecraft players
+or create multiple identical bot reactions to reproduce a like count.
