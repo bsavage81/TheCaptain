@@ -164,14 +164,14 @@ def test_detailed_report_bounds_large_and_nested_encoded_payloads():
     assert 'Detailed scan truncated: yes' in detailed_report({'data': {str(i): [] for i in range(200)}})
 
 
-async def test_long_diagnostic_delivered_as_private_sanitized_attachment():
+async def test_full_feed_delivered_as_private_json_attachment():
     ctx = interaction()
-    report = 'HTTP status: 200\n' + 'schema line\n' * 200
+    report = 'HTTP status: 200\n\n' + '{"result": [{"message": "private text", "xuid": "123456789"}]}'
     cog = RealmCommands(NS(settings=settings()), runtime=NS(stories_debug=AsyncMock(return_value=report)))
     await RealmCommands.storiesdebug.callback(cog, ctx)
     sent = ctx.followup.send.call_args
-    assert sent.kwargs['ephemeral'] and sent.kwargs['file'].filename == 'realm-stories-schema.txt'
-    assert sent.kwargs['file'].fp.read().decode() == report
+    assert sent.kwargs['ephemeral'] and sent.kwargs['file'].filename == 'realm-stories-feed.json'
+    assert sent.kwargs['file'].fp.read().decode() == report.split('\n\n', 1)[1]
     assert len(sent.args[0]) < 2000
 
 
@@ -184,3 +184,14 @@ async def test_role_revoked_does_not_attach_detailed_report():
     await RealmCommands.storiesdebug.callback(cog, ctx)
     assert 'file' not in ctx.followup.send.call_args.kwargs
     assert 'private schema' not in ctx.followup.send.call_args.args[0]
+
+
+async def test_client_full_debug_preserves_response_values_but_not_request_headers():
+    import json
+    body = {'result': [{'id': 'private-id', 'authorXuid': '123456789',
+                       'message': 'private story', 'images': ['https://example.invalid/image.png?q=private']}]}
+    http = FakeHTTP(Response(200, body))
+    report = await client(http).stories_debug()
+    assert json.loads(report.split('\n\n', 1)[1]) == body
+    assert 'Authorization' not in report and 'XBL3.0' not in report
+    assert len(http.calls) == 1

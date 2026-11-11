@@ -212,7 +212,7 @@ class RealmCommands(commands.Cog):
             message = f"Posted {posted} Stories embed(s). Stopped: Stories access, response format, channel permissions, or authorization unavailable. No private error details shown."
         await interaction.followup.send(message, ephemeral=True, allowed_mentions=discord.AllowedMentions.none())
 
-    @realm.command(name="storiesdebug", description="Temporary redacted Stories feed diagnostic (staff only)")
+    @realm.command(name="storiesdebug", description="Full Stories feed JSON diagnostic (staff only)")
     async def storiesdebug(self, interaction: discord.Interaction):
         if not permitted(self.bot.settings, interaction):
             await interaction.response.send_message("Realm commands require the Coastal OP Team role in Coastal Craft.", ephemeral=True)
@@ -231,11 +231,13 @@ class RealmCommands(commands.Cog):
             message = "Stories feed unavailable: configuration, authentication, transport, or JSON response failure. HTTP status unavailable; no private error details shown."
         if not permitted(self.bot.settings, interaction):
             message = "You no longer have access to this Realm command."
-        if len(message) > 1800:
-            # Attach only the already-sanitized report; never raw response JSON.
-            report = discord.File(io.BytesIO(message.encode("utf-8")), filename="realm-stories-schema.txt")
+        if message.startswith("HTTP status: 200\n\n"):
+            # Only the response body is attached. Request headers and auth state
+            # never enter this diagnostic. Role revocation above clears the body.
+            body = message.split("\n\n", 1)[1]
+            report = discord.File(io.BytesIO(body.encode("utf-8")), filename="realm-stories-feed.json")
             await interaction.followup.send(
-                "Stories diagnostic completed. The detailed redacted schema is attached; no content values or image URLs are included.",
+                "HTTP status: 200. Full, unredacted Stories feed JSON attached.",
                 file=report, ephemeral=True, allowed_mentions=discord.AllowedMentions.none())
         else:
             await interaction.followup.send(message, ephemeral=True, allowed_mentions=discord.AllowedMentions.none())

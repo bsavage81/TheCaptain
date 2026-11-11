@@ -72,12 +72,14 @@ class RealmsClient:
         return await self.request("GET", "/api/v1.0/worlds/" + self.config.selected_realm_id + "/stories")
 
     async def stories_debug(self):
-        """One feed GET; discard raw values and return only a structural summary."""
-        if not self.config.selected_realm_id:
-            raise AccessDenied()
-        from .stories_debug import summarize, detailed_report
+        """One feed GET; return the complete response body for staff inspection."""
+        import json
         body = await self.story_feed()
-        return "HTTP status: 200\n" + summarize(body) + "\n\n" + detailed_report(body)
+        serialized = json.dumps(body, ensure_ascii=True, indent=2)
+        # Keep whitespace expansion below Discord attachment limits.
+        if len(serialized) > 7 * 1024 * 1024:
+            serialized = json.dumps(body, ensure_ascii=True, separators=(",", ":"))
+        return "HTTP status: 200\n\n" + serialized
 
     async def metrics(self):
         from .metrics import Metrics, live_path
