@@ -75,7 +75,8 @@ class RealmsClient:
         """Read one club page derived from the configured Realm; no post probe."""
         from .stories_probe import probe_urls
         from .transport import XBOX_RP
-        urls = probe_urls(await self.story_feed())
+        realm_feed = await self.story_feed()
+        urls = probe_urls(realm_feed)
         if urls is None:
             raise ProtocolError()
         self.config.authorize(self.principal)
@@ -88,7 +89,9 @@ class RealmsClient:
         })
         if response.status != 200:
             raise HTTPFailure(response.status, response.retry_after)
-        return response.body
+        if not isinstance(response.body, dict):
+            raise ProtocolError()
+        return dict(response.body, realmEvents=realm_feed["result"])
 
     async def stories_investigation(self):
         """One Realm feed read, then at most two derived Xbox GET probes."""

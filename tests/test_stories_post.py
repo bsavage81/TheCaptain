@@ -137,7 +137,7 @@ async def test_club_posting_reads_two_gets_and_skips_direct_post_endpoint():
     from test_stories_probe import BODY, probe_urls
     http = FakeHTTP(Response(200, BODY), Response(200, feed()))
     api = client(http)
-    assert await api.club_story_feed() == feed()
+    assert await api.club_story_feed() == dict(feed(), realmEvents=BODY["result"])
     assert len(http.calls) == 2 and all(c[0] == 'GET' for c in http.calls)
     assert http.calls[1][1] == probe_urls(BODY)[1]
     assert api.authorization.call_args.kwargs == {'audience': XBOX_RP}
@@ -185,3 +185,47 @@ def test_legacy_xbox_cdn_image_is_upgraded_without_changing_query():
     assert image_url('http://images-eds.xboxlive.com/image/path?sig=sample') == 'https://images-eds.xboxlive.com/image/path?sig=sample'
     assert image_url('http://user:password@images-eds.xboxlive.com/image') is None
     assert image_url('http://images-eds.xboxlive.com.evil.invalid/image') is None
+
+
+def test_merge_realm_event_replaces_generic_text_using_exact_reference():
+    body = feed(); item = body['activityItems'][0]
+    item.update(activityItemType='TextPost', contentType='System', ugcCaption='Generic fallback')
+    item.pop('screenshotUri')
+    item['authorInfo']['id'] = '123456'
+    body['realmEvents'] = [{'clubsPostId': item['feedItemId'], 'eventName': 'FirstEnchantment',
+        'timestamp': '2026-11-10T10:00:00Z', 'players': ['123456', '654321']}]
+    entries, skipped, remaining = render_feed(body)
+    embed = entries[0][1]
+    assert len(entries) == 1 and skipped == remaining == 0
+    assert embed.title == 'First enchantment' and 'Generic fallback' not in embed.description
+    assert embed.timestamp.day == 10
+    assert 'Builder' in embed.fields[0].value and '1 name(s) unavailable' in embed.fields[0].value
+    assert '123456' not in str(embed.to_dict()) and '654321' not in str(embed.to_dict())
+    assert not embed.author.name  # Posting author is not assumed to be event actor.
+
+
+def test_realm_only_event_is_included_and_screenshot_caption_retained():
+    body = feed()
+    body['realmEvents'] = [{'clubsPostId': 'other-reference', 'eventName': 'RealmCreated', 'players': []}]
+    entries, skipped, remaining = render_feed(body)
+    assert len(entries) == 2 and skipped == remaining == 0
+    assert 'A new build' in entries[0][1].description and entries[0][1].image.url
+    assert entries[1][1].title == 'Realm created'
+
+
+def test_direct_screenshot_locator_preferred_to_legacy_image_proxy():
+    body = feed(); body['activityItems'][0]['gameMediaContentLocators'] = [
+        {'LocatorType': 'Download', 'Uri': 'https://screenshotscontent-d3001.media.xboxlive.com/direct.png'},
+        {'LocatorType': 'Thumbnail_Large', 'Uri': 'https://screenshotscontent-t3001.media.xboxlive.com/thumb.png'}]
+    assert render_feed(body)[0][0][1].image.url.endswith('/direct.png')
+    body['activityItems'][0]['gameMediaContentLocators'][0]['Uri'] = 'https://evil.invalid/image'
+    assert render_feed(body)[0][0][1].image.url.endswith('/thumb.png')
+
+
+def test_large_new_member_reference_list_does_not_claim_all_joined():
+    body = feed(); body['realmEvents'] = [{'clubsPostId': 'private-id', 'eventName': 'NewMember',
+        'players': [str(i) for i in range(14)]}]
+    embed = render_feed(body)[0][0][1]
+    assert '14 player reference(s)' in embed.fields[0].value
+    assert '14 players joined' not in embed.description
+    assert 'Players referenced' in embed.fields[0].name

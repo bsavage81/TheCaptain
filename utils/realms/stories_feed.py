@@ -53,7 +53,15 @@ def image_url(value):
 
 
 def images(item):
-    # Prefer the verified full screenshot; do not substitute a game cover/avatar.
+    # Direct screenshot locators avoid the legacy Xbox image-proxy wrapper.
+    locators = item.get('gameMediaContentLocators')
+    if isinstance(locators, list):
+        for kind in ('Download', 'Thumbnail_Large', 'Thumbnail_Small'):
+            for locator in locators[:20]:
+                if isinstance(locator, dict) and locator.get('LocatorType') == kind:
+                    url = image_url(locator.get('Uri'))
+                    if url:
+                        return [url]
     for key in ('screenshotUri', 'screenshotThumbnail'):
         url = image_url(item.get(key))
         if url:
@@ -71,13 +79,69 @@ def timestamp(value):
         return None
 
 
+EVENTS = {
+    'NewMember': ('New Realm member', 'A new member event was recorded.'),
+    'FirstCraftedNetherite': ('First netherite crafted', 'The first netherite crafting event was recorded.'),
+    'FirstEnchantment': ('First enchantment', 'The first enchantment event was recorded.'),
+    'RealmCreated': ('Realm created', 'The Realm was created.'),
+}
+
+
+def realm_event_text(event):
+    kind = event.get('eventName')
+    if isinstance(kind, str) and kind in EVENTS:
+        return EVENTS[kind]
+    return 'Realm Event', 'A Realm event was recorded.'
+
+
+def participant_text(event, names):
+    players = event.get('players')
+    if not isinstance(players, list):
+        return None
+    # References are not proof that every listed player performed the action.
+    identities = set(p for p in players if isinstance(p, str))
+    known = [names[p] for p in sorted(identities) if p in names]
+    missing = len(identities) - len(known)
+    parts = known[:8]
+    if len(known) > 8:
+        parts.append(f'{len(known) - 8} more named players')
+    if missing:
+        parts.append(f'{missing} name(s) unavailable')
+    return (f'{len(identities)} player reference(s): ' + (', '.join(parts) or 'none'))[:1024]
+
+
 def render_feed(body):
     """Return (opaque ID, embed) pairs, plus skipped/remaining counts."""
     if not isinstance(body, dict) or not isinstance(body.get('activityItems'), list):
         raise ProtocolError()
-    result = body['activityItems']
+    result = list(body['activityItems'])
+    realm = body.get('realmEvents', [])
+    if not isinstance(realm, list) or len(realm) > 1000:
+        raise ProtocolError()
     if len(result) > 1000:
         raise ProtocolError()
+    events = {}
+    names = {}
+    for item in result:
+        if not isinstance(item, dict):
+            continue
+        author = item.get('authorInfo')
+        if isinstance(author, dict):
+            identity = author.get('id')
+            name = author.get('modernGamertag') or author.get('name')
+            if isinstance(identity, str) and isinstance(name, str) and name.strip() and not name.isdecimal():
+                names[identity] = clean(name, 80)
+    club_ids = {item.get('feedItemId') for item in result if isinstance(item, dict) and isinstance(item.get('feedItemId'), str)}
+    for event in realm:
+        if not isinstance(event, dict):
+            continue
+        reference = event.get('clubsPostId')
+        if not isinstance(reference, str) or not reference or len(reference) > 256:
+            continue
+        events[reference] = event
+        if reference not in club_ids:
+            result.append({'feedItemId': reference, 'contentType': 'System'})
+            club_ids.add(reference)
     rendered, skipped, seen = [], 0, set()
     for item in result[:10]:
         if not isinstance(item, dict):
@@ -91,16 +155,20 @@ def render_feed(body):
             skipped += 1
             continue
         seen.add(identity)
+        event = events.get(identity)
         text, media = story_text(item), images(item)
+        event_title = None
+        if event is not None:
+            event_title, text = realm_event_text(event)
         if not text and not media:
             # Avoid publishing IDs, event metadata, or empty placeholder stories.
             skipped += 1
             continue
         title = 'Realm Screenshot' if item.get('activityItemType') == 'Screenshot' else ('Realm Event' if item.get('contentType') == 'System' else 'Realm Story')
-        embed = discord.Embed(title=title, description=text or None, colour=0x55AA55,
-                              timestamp=timestamp(item.get('date')))
+        embed = discord.Embed(title=event_title or title, description=text or None, colour=0x55AA55,
+                              timestamp=(timestamp(event.get('timestamp')) if event else None) or timestamp(item.get('date')))
         author = item.get('authorInfo')
-        if isinstance(author, dict):
+        if isinstance(author, dict) and event is None:
             name = author.get('modernGamertag') or author.get('name')
             if isinstance(name, str) and name.strip() and not name.isdecimal():
                 suffix = author.get('modernGamertagSuffix')
@@ -108,6 +176,10 @@ def render_feed(body):
                     name += '#' + suffix
                 avatar = image_url(author.get('imageUrl'))
                 embed.set_author(name=clean(name, 80), **({'icon_url': avatar} if avatar else {}))
+        if event is not None:
+            participants = participant_text(event, names)
+            if participants:
+                embed.add_field(name='Players referenced by event', value=participants, inline=False)
         if media:
             embed.set_image(url=media[0])
         if len(media) > 1:
