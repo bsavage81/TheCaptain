@@ -1,7 +1,7 @@
 """Shared serialized observations using the Phase 2 service; no interactive login."""
 import asyncio
 from contextlib import AsyncExitStack
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import json
 import logging
 import math
@@ -218,7 +218,7 @@ class RealmRuntime:
         finally:
             self._tasks.discard(task)
 
-    async def club_story_feed(self):
+    async def club_story_feed(self, *, old_realm=False):
         """One Realm lookup and one club page; no persistence or polling."""
         from utils.integrations.realms.errors import AccessDenied
         if self._closed or self.client is None:
@@ -232,7 +232,25 @@ class RealmRuntime:
                 if self._retry_at > self._clock():
                     raise HTTPFailure(429, self._retry_at - self._clock())
                 async with asyncio.timeout(120):
-                    body = await self.client.club_story_feed()
+                    if old_realm:
+                        from utils.integrations.realms.client import RealmsClient
+                        from utils.integrations.realms.errors import ProtocolError
+                        realms = await self.client.list_realms()
+                        matches = [realm for realm in realms.data
+                                   if realm.name.strip().casefold() == 'old coastal 10']
+                        if len(matches) != 1:
+                            raise ProtocolError()
+                        target = matches[0]
+                        # Separate client and transport: never mutate the live target,
+                        # its caches, or the transport's selected-Realm allowlist.
+                        async with self._transport_factory(selected_realm_id=target.id) as transport:
+                            archive = RealmsClient(transport, self.client.authorization,
+                                                  replace(self.config, selected_realm_id=target.id),
+                                                  self.client.principal)
+                            body = await archive.club_story_feed()
+                        body = dict(body, sourceRealmId=target.id)
+                    else:
+                        body = await self.client.club_story_feed()
                     if self.names is not None:
                         # The existing name cache handles batching, TTLs and backoff.
                         events = body.get("realmEvents", [])

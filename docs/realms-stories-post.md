@@ -156,3 +156,19 @@ uses the first participant with "has a new friend", NamedMobDies uses "A named m
 met an untimely death", and SlotSwitch uses "The Realm world changed". These do not
 substitute a player name for a mob or world, or expose arbitrary metadata. EasyAndSafe
 retains the generic fallback because no event text was found for that asset.
+
+## Old Coastal 10
+
+`/realm oldstoriespost` posts one Stories page from the accessible Realm currently
+named `Old Coastal 10` into the invoking channel. It requires the same Coastal
+OP Team role and channel permissions as `/realm storiespost` and uses the same
+artwork, participant lookup, 10-item bound and per-session duplicate protection.
+Duplicate scopes are separate for current and archived Stories.
+
+The command lists accessible Realms and requires exactly one case-insensitive,
+trimmed name match. A missing or ambiguous name stops the command; it never falls
+back to the active Realm. A temporary client and transport allow only the resolved
+Realm ID and reuse existing authentication. The configured target, presence,
+metrics, history and background polling remain unchanged. This is a one-page pull,
+not a complete archive export. The new slash command requires command sync after
+deployment using the bot's existing sync procedure.

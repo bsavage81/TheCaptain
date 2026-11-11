@@ -366,3 +366,64 @@ def test_all_verified_event_templates_render_without_placeholders():
             text = realm_event_text({'eventName': kind, 'players': players}, {'1': 'Sailor'})[1]
             assert '%1$s' not in text and '%2$s' not in text
             assert text != 'A Realm event was recorded.'
+
+
+async def test_old_stories_command_uses_archive_and_separate_duplicate_scope():
+    ctx = context()
+    body = dict(feed(), sourceRealmId='77')
+    api = NS(club_story_feed=AsyncMock(return_value=body))
+    cog = RealmCommands(NS(settings=settings()), runtime=api)
+    await RealmCommands.oldstoriespost.callback(cog, ctx)
+    api.club_story_feed.assert_awaited_once_with(old_realm=True)
+    assert 'Old Coastal 10' in ctx.followup.send.call_args.args[0]
+    await RealmCommands.storiespost.callback(cog, ctx)
+    assert ctx.channel.send.await_count == 2
+    await RealmCommands.oldstoriespost.callback(cog, ctx)
+    assert ctx.channel.send.await_count == 2
+
+
+async def test_old_stories_requires_op_team():
+    ctx = interaction(roles=())
+    api = NS(club_story_feed=AsyncMock())
+    cog = RealmCommands(NS(settings=settings()), runtime=api)
+    await RealmCommands.oldstoriespost.callback(cog, ctx)
+    api.club_story_feed.assert_not_awaited()
+
+
+async def test_archive_runtime_resolves_name_and_isolates_client(monkeypatch):
+    from contextlib import asynccontextmanager
+    from utils.integrations.realms.models import Realm
+    from unittest.mock import Mock
+    rt = runtime()
+    rt.client.list_realms = AsyncMock(return_value=NS(data=[Realm('77', 'Old Coastal 10', 'CLOSED', None)]))
+    rt.client.authorization = AsyncMock()
+    rt.client.principal = object()
+    original_config = rt.config
+    @asynccontextmanager
+    async def transport(**kwargs):
+        assert kwargs == {'selected_realm_id': '77'}
+        yield 'archive-transport'
+    rt._transport_factory = transport
+    archive = NS(club_story_feed=AsyncMock(return_value=feed()))
+    factory = Mock(return_value=archive)
+    monkeypatch.setattr('utils.integrations.realms.client.RealmsClient', factory)
+    result = await rt.club_story_feed(old_realm=True)
+    assert result['sourceRealmId'] == '77'
+    args = factory.call_args.args
+    assert args[0] == 'archive-transport' and args[2].selected_realm_id == '77'
+    assert rt.config is original_config and rt.client is not archive
+    assert rt._history_snapshot is None
+    await rt.close()
+
+
+@pytest.mark.parametrize('names', [[], ['Unrelated Realm'], ['Old Coastal 10', 'old coastal 10']])
+async def test_archive_missing_or_ambiguous_name_never_reads_feed(names):
+    from utils.integrations.realms.models import Realm
+    rt = runtime()
+    rt.client.list_realms = AsyncMock(return_value=NS(data=[Realm(str(i+70), name, 'OPEN', None)
+                                                         for i, name in enumerate(names)]))
+    rt.client.club_story_feed = AsyncMock()
+    with pytest.raises(ProtocolError):
+        await rt.club_story_feed(old_realm=True)
+    rt.client.club_story_feed.assert_not_awaited()
+    await rt.close()

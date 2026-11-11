@@ -171,6 +171,13 @@ class RealmCommands(commands.Cog):
 
     @realm.command(name="storiespost", description="Post current Realm Stories once in this channel (OP Team)")
     async def storiespost(self, interaction: discord.Interaction):
+        await self._post_stories(interaction)
+
+    @realm.command(name="oldstoriespost", description="Post Stories from Old Coastal 10 here (OP Team)")
+    async def oldstoriespost(self, interaction: discord.Interaction):
+        await self._post_stories(interaction, old_realm=True)
+
+    async def _post_stories(self, interaction, *, old_realm=False):
         if not permitted(self.bot.settings, interaction):
             await interaction.response.send_message("Realm commands require the Coastal OP Team role in Coastal Craft.", ephemeral=True)
             return
@@ -189,7 +196,8 @@ class RealmCommands(commands.Cog):
                 if not permissions.view_channel or not can_send or not permissions.embed_links:
                     await interaction.followup.send("I need View Channel, Send Messages, and Embed Links here.", ephemeral=True)
                     return
-                entries, skipped, remaining = render_feed(await self.runtime.club_story_feed())
+                body = await self.runtime.club_story_feed(old_realm=True) if old_realm else await self.runtime.club_story_feed()
+                entries, skipped, remaining = render_feed(body)
                 if any((embed.image.url or '').startswith('attachment://') for _, embed in entries) and not permissions.attach_files:
                     await interaction.followup.send("I need Attach Files here to include Realm event artwork.", ephemeral=True)
                     return
@@ -197,7 +205,8 @@ class RealmCommands(commands.Cog):
                 for identity, embed in entries:
                     if not permitted(self.bot.settings, interaction):
                         raise RuntimeError()
-                    key = (interaction.guild_id, channel.id, identity)
+                    source = ('old', body['sourceRealmId']) if old_realm else 'current'
+                    key = (interaction.guild_id, channel.id, source, identity)
                     if key in self._stories_sent:
                         duplicates += 1
                         continue
@@ -213,7 +222,8 @@ class RealmCommands(commands.Cog):
                             attachment.close()
                     self._stories_sent.add(key)
                     posted += 1
-                message = f"Posted {posted} Stories embed(s) in this channel. Skipped {skipped} unsupported item(s), {duplicates} already posted; {remaining} beyond the 10-item limit."
+                source_label = " from Old Coastal 10" if old_realm else ""
+                message = f"Posted {posted} Stories embed(s){source_label} in this channel. Skipped {skipped} unsupported item(s), {duplicates} already posted; {remaining} beyond the 10-item limit."
                 if skipped:
                     message += " Some feed fields or media references are not yet recognized; no raw metadata was published."
         except HTTPFailure as error:
