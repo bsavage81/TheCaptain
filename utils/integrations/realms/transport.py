@@ -52,6 +52,7 @@ class AiohttpTransport:
         self._session = None
         self._semaphore = asyncio.Semaphore(2)
         self._stories_feed = None
+        self._story_probe_reads = frozenset()
         self._reads = {REALMS_HOST + p for p in ("/worlds", "/activities/live/players", "/invites/pending", "/invites/count/pending")}
         if selected_realm_id is not None:
             if not isinstance(selected_realm_id, str) or not re.fullmatch(r"[1-9][0-9]{0,19}", selected_realm_id):
@@ -85,8 +86,10 @@ class AiohttpTransport:
                 raise AccessDenied()
         if not ((method == "POST" and url in AUTH_URLS) or
                 (method == "POST" and url == PROFILE_BATCH) or
-                (method == "GET" and url in self._reads)):
+                (method == "GET" and (url in self._reads or url in self._story_probe_reads))):
             raise AccessDenied()
+        if url == self._stories_feed:
+            self._story_probe_reads = frozenset()
         if self._session is None:
             raise TransportError()
         failed = False
@@ -97,7 +100,7 @@ class AiohttpTransport:
                                                  allow_redirects=False) as response:
                     # The diagnostic needs the status even for non-JSON errors.
                     # Never read, report, or follow error/redirect content for this feed.
-                    if url == self._stories_feed and response.status != 200:
+                    if (url == self._stories_feed or url in self._story_probe_reads) and response.status != 200:
                         return Response(response.status, None, retry_delay(response.headers.get("Retry-After")))
                     if 300 <= response.status < 400:
                         raise ProtocolError()
@@ -112,9 +115,12 @@ class AiohttpTransport:
                     except (ValueError, UnicodeError):
                         malformed = True
                     if malformed:
-                        if url == self._stories_feed:
+                        if url == self._stories_feed or url in self._story_probe_reads:
                             raise HTTPFailure(response.status)
                         raise ProtocolError()
+                    if url == self._stories_feed:
+                        from .stories_probe import probe_urls
+                        self._story_probe_reads = frozenset(probe_urls(body) or ())
                     result = Response(response.status, body, retry_delay(response.headers.get("Retry-After")))
         except (aiohttp.ClientError, OSError, TimeoutError, ValueError):
             failed = True

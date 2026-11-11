@@ -71,6 +71,11 @@ class RealmsClient:
             raise AccessDenied()
         return await self.request("GET", "/api/v1.0/worlds/" + self.config.selected_realm_id + "/stories")
 
+    async def stories_investigation(self):
+        """One Realm feed read, then at most two derived Xbox GET probes."""
+        from .stories_probe import investigate
+        return await investigate(self)
+
     async def stories_debug(self):
         """One feed GET; return the complete response body for staff inspection."""
         import json

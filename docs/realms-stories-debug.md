@@ -1,48 +1,72 @@
-# Temporary full Stories feed diagnostic
+# Temporary Stories and Xbox post investigation
 
-`/realm storiesdebug` now returns the **complete, unredacted JSON response body**
-as an ephemeral `realm-stories-feed.json` attachment to the invoking staff member.
-This explicitly authorized diagnostic includes any player identifiers, names,
-post text, timestamps, media references, signed image URLs, and other fields
-returned by the endpoint. It remains enabled until the command is changed or
-removed. It does not include request headers, authorization tokens from the
-request, the token store, or authentication-service state. Raw upstream errors
-remain suppressed, and response bodies are not logged or saved to local files.
+`/realm storiesdebug` returns an ephemeral `realm-stories-investigation.json`
+attachment to the invoking Coastal Craft OP Team member. Successful response
+bodies are **complete and unredacted**, including player identifiers, text, media
+references and signed URLs returned by the services. Request authorization headers,
+token-store contents and authentication-service state are excluded. Responses are
+not logged or saved to local files. The command remains installed until removed.
 
-Deploy the changes and restart The Captain with the existing Realms credentials
-and configured Realm ID. Run `/realm storiesdebug` in Coastal Craft as an OP Team
-member. Existing command registration continues to work; a Coastal-guild command
-sync is needed only to refresh the updated description. No migration, new
-settings, or extra dependencies are required. No server restart or Discord sync
-is performed by publishing this code to GitHub.
+Deploy and restart The Captain using the existing configuration and credentials.
+Run `/realm storiesdebug` as an OP Team member in Coastal Craft. There are no new
+settings, dependencies or database migrations. The command name/signature has not
+changed, so existing registration works without another sync; a Coastal-only sync
+refreshes its description. Publishing this code does not restart the production bot.
 
-Guild and OP Team checks run before the request and again before delivery. A role
-revocation clears the diagnostic result before any attachment is sent. Bot
-administrators and authentication owners do not bypass the role requirement.
-Although the test channel is private, the attachment is also ephemeral and is
-not posted as a normal channel message.
+## Content requests per invocation
 
-The existing RealmsClient authorization callback, transport, headers and selected
-Realm ID are reused. The full route is
-`https://frontend.realms.minecraft-services.net/api/v1.0/worlds/{realmId}/stories`.
-There is one feed GET per invocation, with no feed retry, redirect, pagination,
-image fetch, or 401 replay. Pre-request authentication can use the normal
-Microsoft/Xbox refresh lifecycle and encrypted-store rotation. Authentication
-failure prevents the feed GET. Other failures return a fixed, private error
-message and HTTP status when available; error bodies are not attached.
+1. GET the selected Realm's frontend `/api/v1.0/worlds/{realmId}/stories` feed,
+   using the existing RealmsClient and Realms XSTS audience.
+2. Select the first valid `clubsPostId` reference returned by that feed and GET
+   `https://userposts.xboxlive.com/users/xuid({author})/posts/{uuid}/timelines/Club/{clubId}`.
+3. GET one page of
+   `https://avty.xboxlive.com/clubs/clubId({clubId})/activity/feed?numItems=10`
+   using the club ID from that same reference.
 
-Successful JSON is pretty-printed, with compact JSON used if indentation exceeds
-7 MiB. The original transport response limit remains 1 MiB. The attachment is
-constructed in memory from the parsed JSON, preserving values rather than exact
-wire formatting. It is sent for small and large successful responses alike.
+The Xbox requests use the existing `authorization_for(..., audience=XBOX_RP)`
+callback (`http://xboxlive.com`), Accept JSON and Accept-Language en-US. The club
+feed sets `x-xbl-contract-version: 13`; the direct-post request omits that header,
+matching the public Minecraft investigation example. This is a diagnostic choice,
+not proof of a current Microsoft API contract. It does not try other versions if
+a request fails.
 
-This command does not create tables, save history, start polling, fetch media, or
-publish normal channel embeds. Player activity and `/stories/playeractivity`
-remain unchanged. `/realm storiespost` remains a separate, manually invoked
-posting command; see [Stories posting](realms-stories-post.md).
+The client validates the exact reference shape, hostname, UUID, positive decimal
+identifiers and numeric bounds. Query strings, alternate hosts, extra paths,
+user-supplied URLs and references not supplied by the selected Realm are rejected.
+Independently, the transport grants exactly those two GET URLs only after a
+successful Realm feed response contains a valid reference, and clears the grant
+on the next feed request. It never grants mutations or general access to Xbox hosts.
 
-After investigation, remove the diagnostic command and sync Coastal guild
-commands to remove its registration. The feed route is also used by
-`/realm storiespost`; retain it while that command is installed. The earlier
-redacted schema helpers remain available in source but are no longer used by
-the debug command.
+The attachment contains `realm_feed`, `xbox_post` and `club_feed` entries with HTTP
+statuses and successful JSON bodies. Missing references/auth failures instead
+produce an `xbox_probes` state. If one Xbox request fails, the other is still tried
+once. Non-200 error bodies are withheld; malformed JSON and transport failures
+produce fixed categories and a status when available. There are no retries,
+redirects, pagination, image downloads, version probing or public embed sends.
+The club-feed item count is requested as 10; the entire actual response is
+included even if the server returns a different count.
+
+Normal authentication may perform the existing Microsoft/Xbox refresh exchanges
+and encrypted-store rotation before these GETs. An Xbox auth failure preserves the
+Realm response and skips both Xbox probes. Initial Realm auth/feed failure returns
+the existing private error message. Maximum upstream body size remains 1 MiB per
+request. JSON attachments are generated in memory, with compact serialization as
+a fallback for large formatting output. The runtime serializes probes with other
+Realm operations and tracks cancellation/shutdown; its overall diagnostic timeout
+is 150 seconds. No history persistence or polling is introduced.
+
+Guild/OP Team authorization is checked before I/O, before each Xbox request, and
+before delivery (the runtime service principal's account authorization and the
+invoking staff member's guild/role checks remain separate). If the invoker loses
+access before delivery, no attachment is sent. `/realm storiespost` and
+`/stories/playeractivity` are unchanged. Earlier single-feed/schema helper methods
+remain available in source, but the command now invokes the combined investigation.
+
+## Evidence and remaining validation
+
+The direct-reference GET and `postContentLocators`/`MinecraftContent` clues come
+from [minecraft-realms-playground](https://github.com/caburum/minecraft-realms-playground/blob/db371c87907fec611d06bb55f979f4f355792257/experimenting.ipynb).
+The club-feed route and contract version come from
+[RealmHelper](https://github.com/MrSterdy/RealmHelper/blob/a21ea091cefdc178d8c8b747157a01220d9ee5dc/src/RealmHelper.Infrastructure/Api/XboxLiveApi.cs).
+Development tests use synthetic data. Live Xbox access, current schemas and
+screenshot availability remain unverified until this command runs on the server.

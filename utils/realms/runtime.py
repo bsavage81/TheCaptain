@@ -231,8 +231,8 @@ class RealmRuntime:
                     raise AccessDenied()
                 if self._retry_at > self._clock():
                     raise HTTPFailure(429, self._retry_at - self._clock())
-                async with asyncio.timeout(45):
-                    return await self.client.stories_debug()
+                async with asyncio.timeout(150):
+                    return await self.client.stories_investigation()
         finally:
             self._tasks.discard(task)
 

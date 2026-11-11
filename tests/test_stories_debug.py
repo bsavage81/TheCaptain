@@ -101,7 +101,7 @@ async def test_debug_role_revoked_during_probe():
 
 async def test_debug_runtime_does_not_enable_history_or_persist():
     api = runtime()
-    api.client.stories_debug = AsyncMock(return_value='HTTP status: 200')
+    api.client.stories_investigation = AsyncMock(return_value='HTTP status: 200')
     assert await api.stories_debug() == 'HTTP status: 200'
     assert api._history_snapshot is None and api._history_retry_at == 0
     assert not api._tasks

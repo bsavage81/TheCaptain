@@ -1,6 +1,7 @@
 """Private Coastal OP Team views of the selected Realm."""
 import asyncio
 import io
+import json
 
 import discord
 from discord import app_commands
@@ -212,7 +213,7 @@ class RealmCommands(commands.Cog):
             message = f"Posted {posted} Stories embed(s). Stopped: Stories access, response format, channel permissions, or authorization unavailable. No private error details shown."
         await interaction.followup.send(message, ephemeral=True, allowed_mentions=discord.AllowedMentions.none())
 
-    @realm.command(name="storiesdebug", description="Full Stories feed JSON diagnostic (staff only)")
+    @realm.command(name="storiesdebug", description="Inspect Realm Stories and referenced Xbox posts (staff only)")
     async def storiesdebug(self, interaction: discord.Interaction):
         if not permitted(self.bot.settings, interaction):
             await interaction.response.send_message("Realm commands require the Coastal OP Team role in Coastal Craft.", ephemeral=True)
@@ -231,7 +232,15 @@ class RealmCommands(commands.Cog):
             message = "Stories feed unavailable: configuration, authentication, transport, or JSON response failure. HTTP status unavailable; no private error details shown."
         if not permitted(self.bot.settings, interaction):
             message = "You no longer have access to this Realm command."
-        if message.startswith("HTTP status: 200\n\n"):
+        if isinstance(message, dict):
+            serialized = json.dumps(message, ensure_ascii=False, indent=2)
+            if len(serialized.encode("utf-8", errors="backslashreplace")) > 7 * 1024 * 1024:
+                serialized = json.dumps(message, ensure_ascii=False, separators=(",", ":"))
+            report = discord.File(io.BytesIO(serialized.encode("utf-8", errors="backslashreplace")), filename="realm-stories-investigation.json")
+            await interaction.followup.send(
+                "Stories investigation attached: Realm feed, one referenced Xbox post, and one club-feed page (up to 10 items). Successful response bodies are unredacted; failures include status when available. No retries or images fetched.",
+                file=report, ephemeral=True, allowed_mentions=discord.AllowedMentions.none())
+        elif message.startswith("HTTP status: 200\n\n"):
             # Only the response body is attached. Request headers and auth state
             # never enter this diagnostic. Role revocation above clears the body.
             body = message.split("\n\n", 1)[1]
