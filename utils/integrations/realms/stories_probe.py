@@ -1,6 +1,7 @@
 """Fixed, read-only Xbox probes derived only from a selected-Realm feed."""
 import asyncio
 import re
+from urllib.parse import urlencode
 
 from .errors import HTTPFailure, RealmsError
 from .transport import XBOX_RP
@@ -25,6 +26,19 @@ def probe_urls(body):
             return ('https://' + reference,
                     f'https://avty.xboxlive.com/clubs/clubId({match[3]})/activity/feed?numItems=10')
     return None
+
+
+def next_club_page(base_url, body):
+    """Build a same-club URL from an opaque token, never an upstream URL."""
+    from .errors import ProtocolError
+    if not isinstance(body, dict):
+        raise ProtocolError()
+    token = body.get('contToken')
+    if token in (None, ''):
+        return None
+    if not isinstance(token, str) or len(token) > 16384:
+        raise ProtocolError()
+    return base_url + '&' + urlencode({'contToken': token})
 
 
 async def investigate(client):

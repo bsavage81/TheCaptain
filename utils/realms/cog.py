@@ -197,7 +197,7 @@ class RealmCommands(commands.Cog):
                     await interaction.followup.send("I need View Channel, Send Messages, and Embed Links here.", ephemeral=True)
                     return
                 body = await self.runtime.club_story_feed(old_realm=True) if old_realm else await self.runtime.club_story_feed()
-                entries, skipped, remaining = render_feed(body)
+                entries, skipped, remaining = render_feed(body, limit=None if old_realm else 10)
                 if any((embed.image.url or '').startswith('attachment://') for _, embed in entries) and not permissions.attach_files:
                     await interaction.followup.send("I need Attach Files here to include Realm event artwork.", ephemeral=True)
                     return
@@ -211,7 +211,7 @@ class RealmCommands(commands.Cog):
                         duplicates += 1
                         continue
                     # Memory-only duplicate guard; bounded without silently forgetting sent posts.
-                    if len(self._stories_sent) >= 1000:
+                    if not old_realm and sum(key[2] == 'current' for key in self._stories_sent) >= 1000:
                         raise RuntimeError()
                     attachment = artwork_file(embed)
                     try:
@@ -223,7 +223,9 @@ class RealmCommands(commands.Cog):
                     self._stories_sent.add(key)
                     posted += 1
                 source_label = " from Old Coastal 10" if old_realm else ""
-                message = f"Posted {posted} Stories embed(s){source_label} in this channel. Skipped {skipped} unsupported item(s), {duplicates} already posted; {remaining} beyond the 10-item limit."
+                message = f"Posted {posted} Stories embed(s){source_label} in this channel, oldest first. Skipped {skipped} unsupported item(s), {duplicates} already posted."
+                if not old_realm:
+                    message += f" {remaining} beyond the 10-item limit."
                 if skipped:
                     message += " Some feed fields or media references are not yet recognized; no raw metadata was published."
         except HTTPFailure as error:

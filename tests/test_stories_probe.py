@@ -102,3 +102,30 @@ async def test_investigation_attached_privately_and_revocation_prevents_delivery
     cog.runtime.stories_debug = revoke
     await RealmCommands.storiesdebug.callback(cog, ctx)
     assert 'file' not in ctx.followup.send.call_args.kwargs
+
+
+async def test_transport_authorizes_only_returned_same_club_pagination_cursor():
+    from utils.integrations.realms.stories_probe import next_club_page
+    session = Session(HTTPResponse(json.dumps(BODY).encode()))
+    async with AiohttpTransport(selected_realm_id='42', session_factory=lambda **kwargs: session) as transport:
+        await transport.request('GET', FEED)
+        base = probe_urls(BODY)[1]
+        unauthorized = base + '&contToken=not-returned'
+        with pytest.raises(AccessDenied):
+            await transport.request('GET', unauthorized)
+        page = {'activityItems': [], 'contToken': 'https://evil.invalid/?secret=opaque'}
+        session.response = HTTPResponse(json.dumps(page).encode())
+        await transport.request('GET', base)
+        next_url = next_club_page(base, page)
+        assert next_url.startswith(base + '&contToken=https%3A%2F%2Fevil.invalid')
+        with pytest.raises(AccessDenied):
+            await transport.request('GET', page['contToken'])
+        session.response = HTTPResponse(json.dumps({'activityItems': []}).encode())
+        await transport.request('GET', next_url)
+        with pytest.raises(AccessDenied):
+            await transport.request('GET', next_url)
+        # A fresh Realm feed read reauthorizes the first club page on the next run.
+        session.response = HTTPResponse(json.dumps(BODY).encode())
+        await transport.request('GET', FEED)
+        session.response = HTTPResponse(json.dumps({'activityItems': []}).encode())
+        await transport.request('GET', base)

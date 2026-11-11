@@ -219,7 +219,7 @@ class RealmRuntime:
             self._tasks.discard(task)
 
     async def club_story_feed(self, *, old_realm=False):
-        """One Realm lookup and one club page; no persistence or polling."""
+        """Read current Stories or all archived pages; no history writes or polling."""
         from utils.integrations.realms.errors import AccessDenied
         if self._closed or self.client is None:
             raise AccessDenied()
@@ -231,7 +231,7 @@ class RealmRuntime:
                     raise AccessDenied()
                 if self._retry_at > self._clock():
                     raise HTTPFailure(429, self._retry_at - self._clock())
-                async with asyncio.timeout(120):
+                async with asyncio.timeout(None if old_realm else 120):
                     if old_realm:
                         from utils.integrations.realms.client import RealmsClient
                         from utils.integrations.realms.errors import ProtocolError
@@ -247,7 +247,7 @@ class RealmRuntime:
                             archive = RealmsClient(transport, self.client.authorization,
                                                   replace(self.config, selected_realm_id=target.id),
                                                   self.client.principal)
-                            body = await archive.club_story_feed()
+                            body = await archive.club_story_feed(all_pages=True)
                         body = dict(body, sourceRealmId=target.id)
                     else:
                         body = await self.client.club_story_feed()
@@ -258,7 +258,11 @@ class RealmRuntime:
                                       for x in (event.get("players") if isinstance(event.get("players"), list) else [])
                                       if isinstance(x, str)}
                         try:
-                            body = dict(body, playerNames=await self.names.resolve(identities))
+                            resolved = {}
+                            identities = sorted(identities)
+                            for start in range(0, len(identities), 100):
+                                resolved.update(await self.names.resolve(identities[start:start + 100]))
+                            body = dict(body, playerNames=resolved)
                         except Exception:
                             log.warning("Stories participant names unavailable")
                     return body

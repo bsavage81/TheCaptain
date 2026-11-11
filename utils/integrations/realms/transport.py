@@ -53,6 +53,7 @@ class AiohttpTransport:
         self._semaphore = asyncio.Semaphore(2)
         self._stories_feed = None
         self._story_probe_reads = frozenset()
+        self._club_feed_base = None
         self._reads = {REALMS_HOST + p for p in ("/worlds", "/activities/live/players", "/invites/pending", "/invites/count/pending")}
         if selected_realm_id is not None:
             if not isinstance(selected_realm_id, str) or not re.fullmatch(r"[1-9][0-9]{0,19}", selected_realm_id):
@@ -120,7 +121,18 @@ class AiohttpTransport:
                         raise ProtocolError()
                     if url == self._stories_feed:
                         from .stories_probe import probe_urls
-                        self._story_probe_reads = frozenset(probe_urls(body) or ())
+                        routes = probe_urls(body)
+                        self._story_probe_reads = frozenset(routes or ())
+                        self._club_feed_base = routes[1] if routes else None
+                    elif url in self._story_probe_reads and self._club_feed_base is not None and url.startswith(self._club_feed_base):
+                        from .stories_probe import next_club_page
+                        next_url = next_club_page(self._club_feed_base, body)
+                        # Only the immediately returned cursor is authorized.
+                        self._story_probe_reads = frozenset(
+                            route for route in self._story_probe_reads
+                            if not route.startswith(self._club_feed_base))
+                        if next_url:
+                            self._story_probe_reads |= frozenset({next_url})
                     result = Response(response.status, body, retry_delay(response.headers.get("Retry-After")))
         except (aiohttp.ClientError, OSError, TimeoutError, ValueError):
             failed = True

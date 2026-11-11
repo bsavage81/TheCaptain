@@ -216,15 +216,15 @@ def realm_event_text(event, names):
     return title, text
 
 
-def render_feed(body):
+def render_feed(body, *, limit=10):
     """Return (opaque ID, embed) pairs, plus skipped/remaining counts."""
     if not isinstance(body, dict) or not isinstance(body.get('activityItems'), list):
         raise ProtocolError()
     result = list(body['activityItems'])
     realm = body.get('realmEvents', [])
-    if not isinstance(realm, list) or len(realm) > 1000:
+    if not isinstance(realm, list) or (limit is not None and len(realm) > 1000):
         raise ProtocolError()
-    if len(result) > 1000:
+    if limit is not None and len(result) > 1000:
         raise ProtocolError()
     events = {}
     supplied_names = body.get('playerNames', {})
@@ -251,7 +251,7 @@ def render_feed(body):
             result.append({'feedItemId': reference, 'contentType': 'System'})
             club_ids.add(reference)
     rendered, skipped, seen = [], 0, set()
-    for item in result[:10]:
+    for item in result[:limit]:
         if not isinstance(item, dict):
             skipped += 1
             continue
@@ -293,4 +293,8 @@ def render_feed(body):
         if len(media) > 1:
             embed.set_footer(text=f'{len(media) - 1} additional images not included')
         rendered.append((identity, embed))
-    return rendered, skipped, max(0, len(result) - 10)
+    # The service feeds newest first. Reverse ties/undated entries too, then
+    # sort dated events and screenshots together across every retrieved page.
+    rendered.reverse()
+    rendered.sort(key=lambda entry: entry[1].timestamp or datetime.min.replace(tzinfo=timezone.utc))
+    return rendered, skipped, max(0, len(result) - limit) if limit is not None else 0

@@ -210,8 +210,8 @@ def test_realm_only_event_is_included_and_screenshot_caption_retained():
     body['realmEvents'] = [{'clubsPostId': 'other-reference', 'eventName': 'RealmCreated', 'players': []}]
     entries, skipped, remaining = render_feed(body)
     assert len(entries) == 2 and skipped == remaining == 0
-    assert 'A new build' in entries[0][1].description and entries[0][1].image.url
-    assert entries[1][1].title == 'Realm created'
+    assert entries[0][1].title == 'Realm created'
+    assert 'A new build' in entries[1][1].description and entries[1][1].image.url
 
 
 def test_direct_screenshot_locator_preferred_to_legacy_image_proxy():
@@ -266,7 +266,7 @@ async def test_runtime_resolves_event_ids_with_existing_cache_and_keeps_feed_on_
     rt = runtime(); rt.client.club_story_feed = AsyncMock(return_value=body)
     rt.names = NS(resolve=AsyncMock(return_value={'123': 'Sailor'}))
     result = await rt.club_story_feed()
-    rt.names.resolve.assert_awaited_once_with({'123', '456'})
+    rt.names.resolve.assert_awaited_once_with(['123', '456'])
     assert result['playerNames'] == {'123': 'Sailor'}
     rt.names.resolve.side_effect = RuntimeError('canary-secret')
     assert await rt.club_story_feed() == body
@@ -427,3 +427,52 @@ async def test_archive_missing_or_ambiguous_name_never_reads_feed(names):
         await rt.club_story_feed(old_realm=True)
     rt.client.club_story_feed.assert_not_awaited()
     await rt.close()
+
+
+async def test_archive_reads_every_cursor_page_with_encoded_same_club_url():
+    from test_stories_probe import BODY, probe_urls
+    http = FakeHTTP(Response(200, BODY),
+                    Response(200, dict(feed(), contToken='opaque+/&cursor')),
+                    Response(200, {'activityItems': [], 'contToken': 'last'}),
+                    Response(200, {'activityItems': [dict(feed()['activityItems'][0], feedItemId='oldest')]}))
+    result = await client(http).club_story_feed(all_pages=True)
+    assert [item['feedItemId'] for item in result['activityItems']] == ['private-id', 'oldest']
+    base = probe_urls(BODY)[1]
+    assert http.calls[2][1] == base + '&contToken=opaque%2B%2F%26cursor'
+    assert http.calls[3][1] == base + '&contToken=last'
+    assert all(call[0] == 'GET' for call in http.calls)
+
+
+async def test_repeated_archive_cursor_stops_before_publishing_incomplete_archive():
+    from test_stories_probe import BODY
+    http = FakeHTTP(Response(200, BODY), Response(200, dict(feed(), contToken='repeat')),
+                    Response(200, dict(feed(), contToken='repeat')))
+    with pytest.raises(ProtocolError):
+        await client(http).club_story_feed(all_pages=True)
+    assert len(http.calls) == 3
+
+
+def test_archive_renderer_has_no_ten_or_thousand_item_limit_and_orders_oldest_first():
+    body = {'activityItems': [dict(feed()['activityItems'][0], feedItemId=str(i), date=None)
+                              for i in range(1105)]}
+    entries, skipped, remaining = render_feed(body, limit=None)
+    assert len(entries) == 1105 and skipped == remaining == 0
+    assert entries[0][0] == '1104' and entries[-1][0] == '0'
+
+
+def test_both_commands_order_dated_events_and_screenshots_chronologically():
+    body = feed()
+    body['activityItems'].append(dict(body['activityItems'][0], feedItemId='older', date='2026-11-01T12:00:00Z'))
+    body['realmEvents'] = [{'clubsPostId': 'event', 'eventName': 'RealmCreated', 'timestamp': '2026-10-01T00:00:00Z'}]
+    for limit in (10, None):
+        assert [key for key, _ in render_feed(body, limit=limit)[0]] == ['event', 'older', 'private-id']
+
+
+async def test_archive_posts_past_session_guard_and_ten_item_limit():
+    ctx = context()
+    body = {'sourceRealmId': '77', 'activityItems': [dict(feed()['activityItems'][0], feedItemId=str(i)) for i in range(12)]}
+    cog = RealmCommands(NS(settings=settings()), runtime=NS(club_story_feed=AsyncMock(return_value=body)))
+    cog._stories_sent = {(202, 303, ('old', '77'), 'earlier-' + str(i)) for i in range(1000)}
+    await RealmCommands.oldstoriespost.callback(cog, ctx)
+    assert ctx.channel.send.await_count == 12
+    assert '10-item limit' not in ctx.followup.send.call_args.args[0]

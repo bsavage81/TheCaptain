@@ -71,27 +71,37 @@ class RealmsClient:
             raise AccessDenied()
         return await self.request("GET", "/api/v1.0/worlds/" + self.config.selected_realm_id + "/stories")
 
-    async def club_story_feed(self):
-        """Read one club page derived from the configured Realm; no post probe."""
+    async def club_story_feed(self, *, all_pages=False):
+        """Read club Stories, optionally following every returned continuation token."""
         from .stories_probe import probe_urls
         from .transport import XBOX_RP
         realm_feed = await self.story_feed()
         urls = probe_urls(realm_feed)
         if urls is None:
             raise ProtocolError()
+        from .stories_probe import next_club_page
         self.config.authorize(self.principal)
         token = await self.authorization(self.principal, audience=XBOX_RP)
-        self.config.authorize(self.principal)
-        response = await self.transport.request("GET", urls[1], headers={
-            "Authorization": token.authorization.value,
-            "x-xbl-contract-version": "13", "Accept": "application/json",
-            "Accept-Language": "en-US", "Cache-Control": "no-cache, no-store",
-        })
-        if response.status != 200:
-            raise HTTPFailure(response.status, response.retry_after)
-        if not isinstance(response.body, dict):
-            raise ProtocolError()
-        return dict(response.body, realmEvents=realm_feed["result"])
+        url, seen, items = urls[1], set(), []
+        while url is not None:
+            if url in seen:
+                raise ProtocolError()
+            seen.add(url)
+            self.config.authorize(self.principal)
+            response = await self.transport.request("GET", url, headers={
+                "Authorization": token.authorization.value,
+                "x-xbl-contract-version": "13", "Accept": "application/json",
+                "Accept-Language": "en-US", "Cache-Control": "no-cache, no-store",
+            })
+            if response.status != 200:
+                raise HTTPFailure(response.status, response.retry_after)
+            if not isinstance(response.body, dict) or not isinstance(response.body.get('activityItems'), list):
+                raise ProtocolError()
+            if not all_pages:
+                return dict(response.body, realmEvents=realm_feed["result"])
+            items.extend(response.body['activityItems'])
+            url = next_club_page(urls[1], response.body)
+        return dict(activityItems=items, realmEvents=realm_feed["result"])
 
     async def stories_investigation(self):
         """One Realm feed read, then at most two derived Xbox GET probes."""

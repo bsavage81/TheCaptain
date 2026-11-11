@@ -169,6 +169,28 @@ The command lists accessible Realms and requires exactly one case-insensitive,
 trimmed name match. A missing or ambiguous name stops the command; it never falls
 back to the active Realm. A temporary client and transport allow only the resolved
 Realm ID and reuse existing authentication. The configured target, presence,
-metrics, history and background polling remain unchanged. This is a one-page pull,
-not a complete archive export. The new slash command requires command sync after
+metrics, history and background polling remain unchanged. This pulls all pages exposed by the service,
+not deleted or expired Stories. The new slash command requires command sync after
 deployment using the bot's existing sync procedure.
+
+## Chronological backfill
+
+Both Stories posting commands now send oldest first, sorting available event and
+screenshot timestamps together. Undated entries reverse the upstream feed order.
+The current-Realm command keeps its existing one-page/10-item scope.
+
+The old-Realm command follows Xbox `contToken` pagination until there is no next
+token, then renders all retrieved entries. It has no post-count limit, renderer
+1,000-item cutoff, or 120-second archive-fetch timeout. Per-request timeouts and
+response-size protections still apply. Cursor URLs are built on the exact same
+club endpoint using encoded opaque tokens; arbitrary returned URLs are never
+followed. Repeated cursors and failed pages stop fetching before publication.
+Only Stories still available from the service can be recovered; live pagination
+behavior has not been verified by these offline tests.
+
+Discord's client handles send rate limits. Duplicate protection remains in memory
+for the current bot session, with separate old/current scopes; successful sends
+survive a later send failure in that session. Restarting loses that protection.
+Persistent delivery checkpoints should be added before enabling recurring automatic
+posting. No automation is enabled by this change. Long backfills can outlast the
+Discord interaction token, although channel sends use the bot's authentication.
