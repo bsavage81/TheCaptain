@@ -118,3 +118,22 @@ added to the embeds. Player screenshot rendering continues to use the verified
 club media URLs.
 
 Repository inspected: https://github.com/Mojang/bedrock-samples/tree/main/resource_pack/textures
+
+## Bundled event artwork
+
+`images/realms-stories/` contains 31 original PNG assets copied without modification
+from the installed Minecraft for Windows `Content/data/gui/dist/hbui/assets` folder.
+Hashed source filenames were renamed to their event names. The additional names
+are assumed event mappings, pending confirmation in live feed responses; no new
+API event semantics or participant wording is inferred from those filenames.
+
+Matched events without screenshot media use their local PNG as a Discord attachment.
+Existing screenshot URLs retain priority. Unknown event names or missing asset files
+retain text-only rendering. An explicit allowlist prevents upstream names from
+selecting arbitrary local files. The bot needs Attach Files in the destination
+channel; missing permission stops publication before any entries are sent.
+Attachments are closed after each send, including failures. The assets deploy with
+the repository and do not require Minecraft to be installed on the bot host.
+
+Restart after deployment before repeating `/realm storiespost`, because its existing
+session duplicate guard still skips previously sent entries. No command sync needed.

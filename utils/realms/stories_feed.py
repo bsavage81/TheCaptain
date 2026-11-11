@@ -1,10 +1,61 @@
 """Small, explicit Story Feed renderer. Never dump unknown upstream fields."""
 from datetime import datetime, timezone
+from pathlib import Path
 from urllib.parse import urlsplit
 
 import discord
 
 from utils.integrations.realms.errors import ProtocolError
+
+
+ARTWORK_DIR = Path(__file__).resolve().parents[2] / "images" / "realms-stories"
+# Explicit names only: upstream event names never become arbitrary filesystem paths.
+EVENT_ARTWORK = frozenset({
+    '250HostileMobs',
+    'AllMobNameEasterEggs',
+    'CookEverything',
+    'DefeatEnderdragon',
+    'DefeatWither',
+    'DiamondEverything',
+    'EasyAndSafe',
+    'FirstAbandonedMineshaftFound',
+    'FirstAncientCityFound',
+    'FirstBadlandsFound',
+    'FirstConduit',
+    'FirstCraftedNetherite',
+    'FirstDiamondFound',
+    'FirstEnchantment',
+    'FirstEndPortal',
+    'FirstEnderDragonDefeated',
+    'FirstFullyExploredMap',
+    'FirstMushroomFieldFound',
+    'FirstNetherFortressFound',
+    'FirstNetherPortalLit',
+    'FirstPeakMountainFound',
+    'FirstPillagerOutpostFound',
+    'FirstPoweredBeacon',
+    'FirstWitherDefeated',
+    'FirstWoodlandMansionFound',
+    'NamedMob',
+    'NamedMobDies',
+    'NewMember',
+    'PillagerCaptainDefeated',
+    'RealmCreated',
+    'SlotSwitch',
+})
+
+
+def artwork_file(embed):
+    """Open a fresh attachment for this send; the caller closes it afterward."""
+    url = embed.image.url or ""
+    prefix = "attachment://"
+    if not url.startswith(prefix):
+        return None
+    filename = url[len(prefix):]
+    if filename not in {name + ".png" for name in EVENT_ARTWORK}:
+        return None
+    return discord.File(ARTWORK_DIR / filename, filename=filename)
+
 
 TEXT_FIELDS = ('ugcCaption', 'itemText', 'description', 'shortDescription')
 
@@ -180,6 +231,10 @@ def render_feed(body):
                 embed.set_author(name=clean(name, 80), **({'icon_url': avatar} if avatar else {}))
         if media:
             embed.set_image(url=media[0])
+        elif event is not None:
+            kind = event.get('eventName')
+            if isinstance(kind, str) and kind in EVENT_ARTWORK and (ARTWORK_DIR / (kind + '.png')).is_file():
+                embed.set_image(url='attachment://' + kind + '.png')
         if len(media) > 1:
             embed.set_footer(text=f'{len(media) - 1} additional images not included')
         rendered.append((identity, embed))

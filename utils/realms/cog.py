@@ -175,7 +175,7 @@ class RealmCommands(commands.Cog):
             await interaction.response.send_message("Realm commands require the Coastal OP Team role in Coastal Craft.", ephemeral=True)
             return
         await interaction.response.defer(ephemeral=True, thinking=True)
-        from .stories_feed import render_feed
+        from .stories_feed import render_feed, artwork_file
         from utils.integrations.realms.errors import HTTPFailure
         posted = 0
         try:
@@ -190,6 +190,9 @@ class RealmCommands(commands.Cog):
                     await interaction.followup.send("I need View Channel, Send Messages, and Embed Links here.", ephemeral=True)
                     return
                 entries, skipped, remaining = render_feed(await self.runtime.club_story_feed())
+                if any((embed.image.url or '').startswith('attachment://') for _, embed in entries) and not permissions.attach_files:
+                    await interaction.followup.send("I need Attach Files here to include Realm event artwork.", ephemeral=True)
+                    return
                 duplicates = 0
                 for identity, embed in entries:
                     if not permitted(self.bot.settings, interaction):
@@ -201,7 +204,13 @@ class RealmCommands(commands.Cog):
                     # Memory-only duplicate guard; bounded without silently forgetting sent posts.
                     if len(self._stories_sent) >= 1000:
                         raise RuntimeError()
-                    await channel.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
+                    attachment = artwork_file(embed)
+                    try:
+                        await channel.send(embed=embed, allowed_mentions=discord.AllowedMentions.none(),
+                                           **({'file': attachment} if attachment is not None else {}))
+                    finally:
+                        if attachment is not None:
+                            attachment.close()
                     self._stories_sent.add(key)
                     posted += 1
                 message = f"Posted {posted} Stories embed(s) in this channel. Skipped {skipped} unsupported item(s), {duplicates} already posted; {remaining} beyond the 10-item limit."

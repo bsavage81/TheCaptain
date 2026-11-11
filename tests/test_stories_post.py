@@ -9,7 +9,7 @@ from realms_fakes import FakeHTTP
 from utils.integrations.realms.transport import Response, STORIES_HOST
 from utils.integrations.realms.errors import HTTPFailure, ProtocolError
 from utils.realms.cog import RealmCommands
-from utils.realms.stories_feed import render_feed, image_url
+from utils.realms.stories_feed import render_feed, image_url, EVENT_ARTWORK
 
 
 def feed():
@@ -24,7 +24,7 @@ def context():
     ctx = interaction()
     ctx.guild.me = NS()
     ctx.channel = NS(id=303, guild=ctx.guild, send=AsyncMock(),
-        permissions_for=lambda member: NS(view_channel=True, send_messages=True, embed_links=True))
+        permissions_for=lambda member: NS(view_channel=True, send_messages=True, embed_links=True, attach_files=True))
     return ctx
 
 
@@ -255,3 +255,58 @@ async def test_runtime_resolves_event_ids_with_existing_cache_and_keeps_feed_on_
     rt.names.resolve.side_effect = RuntimeError('canary-secret')
     assert await rt.club_story_feed() == body
     await rt.close()
+
+
+@pytest.mark.parametrize('kind', sorted(EVENT_ARTWORK))
+def test_all_bundled_event_artwork_opens_with_matching_attachment(kind):
+    from utils.realms.stories_feed import artwork_file
+    body = {'activityItems': [], 'realmEvents': [{'clubsPostId': 'event', 'eventName': kind}]}
+    embed = render_feed(body)[0][0][1]
+    assert embed.image.url == f'attachment://{kind}.png'
+    attachment = artwork_file(embed)
+    try:
+        assert attachment.filename == f'{kind}.png'
+        assert attachment.fp.read(8) == b'\x89PNG\r\n\x1a\n'
+    finally:
+        attachment.close()
+
+
+@pytest.mark.parametrize('kind', ['UnknownEvent', '../../private', None])
+def test_unknown_event_artwork_is_not_invented(kind):
+    body = {'activityItems': [], 'realmEvents': [{'clubsPostId': 'event', 'eventName': kind}]}
+    assert not render_feed(body)[0][0][1].image.url
+
+
+async def test_event_attachment_sent_and_closed():
+    ctx = context()
+    body = {'activityItems': [], 'realmEvents': [{'clubsPostId': 'event', 'eventName': 'NewMember'}]}
+    observed = []
+    async def send(**kwargs):
+        attachment = kwargs['file']
+        assert not attachment.fp.closed
+        assert kwargs['embed'].image.url == 'attachment://' + attachment.filename
+        observed.append(attachment)
+    ctx.channel.send.side_effect = send
+    cog = RealmCommands(NS(settings=settings()), runtime=NS(club_story_feed=AsyncMock(return_value=body)))
+    await RealmCommands.storiespost.callback(cog, ctx)
+    assert len(observed) == 1 and observed[0].fp.closed
+    assert len(cog._stories_sent) == 1
+
+
+async def test_missing_attach_permission_prevents_partial_posting():
+    ctx = context()
+    ctx.channel.permissions_for = lambda member: NS(view_channel=True, send_messages=True, embed_links=True, attach_files=False)
+    body = dict(feed(), realmEvents=[{'clubsPostId': 'event', 'eventName': 'RealmCreated'}])
+    cog = RealmCommands(NS(settings=settings()), runtime=NS(club_story_feed=AsyncMock(return_value=body)))
+    await RealmCommands.storiespost.callback(cog, ctx)
+    ctx.channel.send.assert_not_awaited()
+    assert 'Attach Files' in ctx.followup.send.call_args.args[0]
+
+
+def test_missing_artwork_keeps_text(monkeypatch, tmp_path):
+    import utils.realms.stories_feed as renderer
+    monkeypatch.setattr(renderer, 'ARTWORK_DIR', tmp_path)
+    body = {'activityItems': [], 'realmEvents': [{'clubsPostId': 'event', 'eventName': 'NewMember'}]}
+    embed = render_feed(body)[0][0][1]
+    assert embed.description == 'A player joined the Realm.'
+    assert not embed.image.url
