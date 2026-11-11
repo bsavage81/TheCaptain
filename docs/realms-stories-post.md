@@ -275,3 +275,13 @@ artwork is attached when restoring generic event posts. Pet names use the observ
 
 This reconstruction does not guarantee future live responses will always include
 complete metadata; missing-data handling remains necessary for live posts too.
+
+## Deleted Discord posts
+
+Each run checks saved Discord messages even when their content has not changed.
+Discord HTTP 404 / code 10008 (Unknown Message) permits recreating that Story and
+replacing its saved message ID after the new send succeeds. Other errors, including
+permission failures, missing channels and server errors, retain the old checkpoint
+and stop rather than risk duplicates. Re-checking requires Read Message History.
+Fixed-stage diagnostics identify whether fetch, edit, send or checkpoint work failed;
+Discord error bodies and private exception details are not included.

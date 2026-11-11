@@ -697,3 +697,54 @@ async def test_saved_embed_text_refreshes_when_footer_is_unchanged():
     await RealmCommands.storiespost.callback(cog,ctx)
     original.edit.assert_awaited_once()
     ctx.channel.send.assert_not_awaited()
+
+
+@pytest.mark.parametrize('changed', [False, True])
+async def test_deleted_tracked_story_is_recreated_and_checkpoint_replaced(changed):
+    import discord
+    from utils.realms.story_deliveries import StoryDeliveries
+    ctx = context()
+    body = feed()
+    api = NS(club_story_feed=AsyncMock(return_value=body))
+    bot = NS(settings=settings(), user=NS(id=999))
+    cog = RealmCommands(bot, runtime=api)
+    ledger = StoryDeliveries(None)
+    await ledger.load()
+    cog._story_deliveries = ledger
+    source = settings()['realms']['selected_realm_id']
+    key = ledger.key(202,303,source,'private-id')
+    embed = render_feed(body)[0][0][1]
+    await ledger.save(key,123,embed.footer.text,signature='old' if changed else ledger.signature(embed))
+    cog._stories_sent.add((202,303,source,'private-id'))
+    ctx.channel.fetch_message = AsyncMock(side_effect=discord.NotFound(NS(status=404,reason='Not Found'),
+        {'code':10008,'message':'Unknown Message'}))
+    ctx.channel.send.return_value = NS(id=456)
+    await RealmCommands.storiespost.callback(cog,ctx)
+    ctx.channel.send.assert_awaited_once()
+    assert ledger.entries[key]['message_id'] == 456
+    original=NS(id=456,author=NS(id=999),embeds=[embed],edit=AsyncMock())
+    ctx.channel.fetch_message.side_effect = None
+    ctx.channel.fetch_message.return_value = original
+    await RealmCommands.storiespost.callback(cog,ctx)
+    assert ctx.channel.send.await_count == 1
+    original.edit.assert_not_awaited()
+
+
+@pytest.mark.parametrize('status,code', [(403,50001),(404,10003),(500,0)])
+async def test_fetch_permission_channel_or_server_failure_never_recreates_story(status,code):
+    import discord
+    from utils.realms.story_deliveries import StoryDeliveries
+    ctx=context()
+    cog=RealmCommands(NS(settings=settings(),user=NS(id=999)),runtime=NS(club_story_feed=AsyncMock(return_value=feed())))
+    ledger=StoryDeliveries(None)
+    await ledger.load()
+    cog._story_deliveries=ledger
+    key=ledger.key(202,303,settings()['realms']['selected_realm_id'],'private-id')
+    await ledger.save(key,123,'previous')
+    error_type=discord.Forbidden if status==403 else discord.NotFound if status==404 else discord.HTTPException
+    ctx.channel.fetch_message=AsyncMock(side_effect=error_type(NS(status=status,reason='failed'),{'code':code,'message':'private-canary'}))
+    await RealmCommands.storiespost.callback(cog,ctx)
+    ctx.channel.send.assert_not_awaited()
+    assert ledger.entries[key]['message_id']==123
+    report=ctx.followup.send.call_args.args[0]
+    assert 'fetch_original_message' in report and 'private-canary' not in report

@@ -186,6 +186,7 @@ class RealmCommands(commands.Cog):
         from .stories_feed import render_feed, artwork_file
         from utils.integrations.realms.errors import HTTPFailure, StoriesError, RealmsError
         posted = updated = 0
+        stage = 'read_stories'
         try:
             async with self._stories_post_lock:
                 channel = interaction.channel
@@ -200,6 +201,7 @@ class RealmCommands(commands.Cog):
                 body = await self.runtime.club_story_feed(old_realm=True) if old_realm else await self.runtime.club_story_feed()
                 if old_realm:
                     from .stories_archive import restore_archive
+                    stage = 'restore_archive'
                     body = restore_archive(body)
                     from datetime import datetime, timezone
                     from zoneinfo import ZoneInfo
@@ -214,6 +216,7 @@ class RealmCommands(commands.Cog):
                 from .story_deliveries import StoryDeliveries
                 if self._story_deliveries is None:
                     self._story_deliveries = StoryDeliveries(getattr(self.runtime, 'store', None))
+                stage = 'load_delivery_records'
                 await self._story_deliveries.load()
                 duplicates = 0
                 source = body['sourceRealmId'] if old_realm else self.bot.settings['realms']['selected_realm_id']
@@ -224,9 +227,24 @@ class RealmCommands(commands.Cog):
                     delivery_key = StoryDeliveries.key(interaction.guild_id, channel.id, source, identity)
                     signature = StoryDeliveries.signature(embed)
                     previous = self._story_deliveries.entries.get(delivery_key)
+                    stage = 'fetch_original_message'
+                    original = None
                     if previous is not None:
-                        if previous['footer'] != embed.footer.text or previous.get('signature') != signature:
+                        try:
                             original = await channel.fetch_message(previous['message_id'])
+                        except discord.NotFound as error:
+                            if error.code != 10008:
+                                raise
+                            # Only Unknown Message confirms deletion. Preserve the
+                            # checkpoint on permission/channel/transient failures.
+                            previous = None
+                            self._stories_sent.discard(key)
+                    if not permitted(self.bot.settings, interaction):
+                        raise RuntimeError()
+                    if previous is not None:
+                        if original.author.id != self.bot.user.id or not original.embeds:
+                            raise RuntimeError()
+                        if previous['footer'] != embed.footer.text or previous.get('signature') != signature:
                             if not permitted(self.bot.settings, interaction):
                                 raise RuntimeError()
                             if original.author.id != self.bot.user.id or not original.embeds:
@@ -240,6 +258,7 @@ class RealmCommands(commands.Cog):
                             elif (embed.image.url or '').startswith('attachment://'):
                                 attachment = artwork_file(embed)
                             try:
+                                stage = 'edit_original_message'
                                 await original.edit(embed=existing, allowed_mentions=discord.AllowedMentions.none(),
                                                     **({'attachments': [attachment]} if attachment else {}))
                             finally:
@@ -259,6 +278,7 @@ class RealmCommands(commands.Cog):
                         raise RuntimeError()
                     attachment = artwork_file(embed)
                     try:
+                        stage = 'send_story'
                         sent_message = await channel.send(embed=embed, allowed_mentions=discord.AllowedMentions.none(),
                                            **({'file': attachment} if attachment is not None else {}))
                     finally:
@@ -268,6 +288,7 @@ class RealmCommands(commands.Cog):
                     posted += 1
                     # Memory guard is already set if checkpoint persistence fails.
                     if type(getattr(sent_message, 'id', None)) is int:
+                        stage = 'save_delivery_record'
                         await self._story_deliveries.save(delivery_key, sent_message.id, embed.footer.text, signature=signature)
                 source_label = " from OLD Coastal S10 (October 31, 2026 to now, America/Chicago)" if old_realm else ""
                 message = f"Posted {posted} Stories embed(s){source_label} in this channel, oldest first. Updated {updated} existing post(s). Skipped {skipped} unsupported item(s), {duplicates} already posted."
@@ -276,6 +297,10 @@ class RealmCommands(commands.Cog):
                 message += f" Realm feed in Minecraft (copy this address): `minecraft://openRealmsStories?realmId={source}`"
                 if skipped:
                     message += " Items outside the date range, without a usable date, or with unsupported content were skipped." if old_realm else " Some feed fields or media references are not yet recognized; no raw metadata was published."
+        except discord.Forbidden:
+            message = f"Posted {posted} Stories embed(s), updated {updated}. Discord denied permission at {stage}. I need View Channel, Read Message History, Send Messages, Embed Links and Attach Files here."
+        except discord.HTTPException as error:
+            message = f"Posted {posted} Stories embed(s), updated {updated}. Discord request failed at {stage} (HTTP {error.status}, code {error.code}). No private error details shown."
         except StoriesError as error:
             message = f"Posted {posted} Stories embed(s). {StoriesError.reasons[error.reason]} (Code: {error.reason}.)"
         except HTTPFailure as error:
@@ -283,7 +308,7 @@ class RealmCommands(commands.Cog):
         except RealmsError as error:
             message = f"Posted {posted} Stories embed(s). Stopped: {error.category}. No private error details shown."
         except Exception:
-            message = f"Posted {posted} Stories embed(s). Stopped: Stories access, response format, channel permissions, or authorization unavailable. No private error details shown."
+            message = f"Posted {posted} Stories embed(s). Stopped at {stage}: Stories access, response format, channel permissions, or authorization unavailable. No private error details shown."
         await interaction.followup.send(message, ephemeral=True, allowed_mentions=discord.AllowedMentions.none())
 
     @realm.command(name="storiesdebug", description="Inspect Realm Stories and referenced Xbox posts (staff only)")
