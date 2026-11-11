@@ -250,7 +250,7 @@ class RealmRuntime:
                                 raise StoriesError('archive_fetch') from None
                         body = dict(body, sourceRealmId=target_id)
                     else:
-                        body = await self.client.club_story_feed()
+                        body = await self.client.club_story_feed(all_pages=True)
                     if self.names is not None:
                         # The existing name cache handles batching, TTLs and backoff.
                         events = body.get("realmEvents", [])

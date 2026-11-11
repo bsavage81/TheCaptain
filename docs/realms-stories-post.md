@@ -285,3 +285,32 @@ permission failures, missing channels and server errors, retain the old checkpoi
 and stop rather than risk duplicates. Re-checking requires Read Message History.
 Fixed-stage diagnostics identify whether fetch, edit, send or checkpoint work failed;
 Discord error bodies and private exception details are not included.
+
+## Current-Realm automatic sync
+
+The current `/realm storiespost` command and background task share the same publisher:
+all available pages, chronological order, event-reference deduplication, cached names,
+artwork, pet names, counters, encrypted delivery records, and deleted-message recovery.
+The current command no longer truncates to ten posts. It never applies OLD Coastal S10
+reconstruction data. Manual commands and automatic work share a publication lock.
+
+The operator authorized channel `1570170968775590079` with a 300-second interval.
+After deployment the task waits for bot readiness, initializes a `realm_stories`
+block in existing `botdata.settings_json` if absent, and runs the first sync. Later
+runs use the persisted setting. It validates the destination's Coastal guild before
+publishing. First sync posts any current-Realm Stories that do not have delivery
+records for that channel; it does not send the old Realm archive.
+
+`/realm storiesauto enabled:false` pauses the task persistently;
+`/realm storiesauto enabled:true` resumes and binds it to the currently configured
+Realm. OP Team access is required. A selected-Realm change pauses posting until
+explicit re-enablement, and the actual runtime target must match. Existing settings
+and database schema are preserved; only the optional JSON block is written.
+The new slash command needs sync after deployment, but the background task starts
+without a command sync. Unload cancels this task before closing Realm resources.
+
+Failures back off from five minutes up to an hour, with upstream Retry-After honored
+by the shared publisher. No unchanging embeds are edited, and no public error or
+per-poll status messages are posted. The bot needs View Channel, Read Message History,
+Send Messages, Embed Links and Attach Files in the destination. Private-store limits
+and the send-before-checkpoint crash window still apply.

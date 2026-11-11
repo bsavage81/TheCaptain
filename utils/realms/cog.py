@@ -77,17 +77,22 @@ class RealmCommands(commands.Cog):
         self._stories_post_lock = asyncio.Lock()
         self._stories_sent = set()
         self._story_deliveries = None
+        self._stories_retry_at = 0
         self.runtime = runtime if runtime is not None else RealmRuntime(bot.settings)
         self.panels = PanelController(bot, self.runtime)
         self.metrics_panels = MetricsController(bot, self.runtime)
+        from .stories_sync import StoriesController
+        self.stories_sync = StoriesController(bot, self.runtime, self._publish_stories)
 
     async def cog_load(self):
         await self.runtime.start()
         if hasattr(self.bot, "wait_until_ready"):
             self.panels.start()
             self.metrics_panels.start()
+            self.stories_sync.start()
 
     async def cog_unload(self):
+        await self.stories_sync.close()
         await self.metrics_panels.close()
         await self.panels.close()
         await self.runtime.close()
@@ -183,21 +188,27 @@ class RealmCommands(commands.Cog):
             await interaction.response.send_message("Realm commands require the Coastal OP Team role in Coastal Craft.", ephemeral=True)
             return
         await interaction.response.defer(ephemeral=True, thinking=True)
+        _, message = await self._publish_stories(interaction.channel, interaction.guild_id,
+                                                  lambda: permitted(self.bot.settings, interaction), old_realm=old_realm)
+        await interaction.followup.send(message, ephemeral=True, allowed_mentions=discord.AllowedMentions.none())
+
+    async def _publish_stories(self, channel, guild_id, authorized, *, old_realm=False):
         from .stories_feed import render_feed, artwork_file
         from utils.integrations.realms.errors import HTTPFailure, StoriesError, RealmsError
         posted = updated = 0
         stage = 'read_stories'
+        success = False
         try:
             async with self._stories_post_lock:
-                channel = interaction.channel
-                if (channel is None or getattr(getattr(channel, "guild", None), "id", None) != interaction.guild_id
-                        or not permitted(self.bot.settings, interaction)):
+                if asyncio.get_running_loop().time() < self._stories_retry_at:
+                    return False, 'Stories service requested a cooldown; try again later.'
+                if (channel is None or getattr(getattr(channel, "guild", None), "id", None) != guild_id
+                        or not authorized()):
                     raise RuntimeError()
-                permissions = channel.permissions_for(interaction.guild.me)
+                permissions = channel.permissions_for(channel.guild.me)
                 can_send = permissions.send_messages_in_threads if isinstance(channel, discord.Thread) else permissions.send_messages
                 if not permissions.view_channel or not can_send or not permissions.embed_links:
-                    await interaction.followup.send("I need View Channel, Send Messages, and Embed Links here.", ephemeral=True)
-                    return
+                    return False, "I need View Channel, Send Messages, and Embed Links here."
                 body = await self.runtime.club_story_feed(old_realm=True) if old_realm else await self.runtime.club_story_feed()
                 if old_realm:
                     from .stories_archive import restore_archive
@@ -209,10 +220,9 @@ class RealmCommands(commands.Cog):
                     entries, skipped, remaining = render_feed(body, limit=None, since=since,
                                                               until=datetime.now(timezone.utc))
                 else:
-                    entries, skipped, remaining = render_feed(body)
+                    entries, skipped, remaining = render_feed(body, limit=None)
                 if any((embed.image.url or '').startswith('attachment://') for _, embed in entries) and not permissions.attach_files:
-                    await interaction.followup.send("I need Attach Files here to include Realm event artwork.", ephemeral=True)
-                    return
+                    return False, "I need Attach Files here to include Realm event artwork."
                 from .story_deliveries import StoryDeliveries
                 if self._story_deliveries is None:
                     self._story_deliveries = StoryDeliveries(getattr(self.runtime, 'store', None))
@@ -221,10 +231,10 @@ class RealmCommands(commands.Cog):
                 duplicates = 0
                 source = body['sourceRealmId'] if old_realm else self.bot.settings['realms']['selected_realm_id']
                 for identity, embed in entries:
-                    if not permitted(self.bot.settings, interaction):
+                    if not authorized():
                         raise RuntimeError()
-                    key = (interaction.guild_id, channel.id, source, identity)
-                    delivery_key = StoryDeliveries.key(interaction.guild_id, channel.id, source, identity)
+                    key = (guild_id, channel.id, source, identity)
+                    delivery_key = StoryDeliveries.key(guild_id, channel.id, source, identity)
                     signature = StoryDeliveries.signature(embed)
                     previous = self._story_deliveries.entries.get(delivery_key)
                     stage = 'fetch_original_message'
@@ -239,13 +249,13 @@ class RealmCommands(commands.Cog):
                             # checkpoint on permission/channel/transient failures.
                             previous = None
                             self._stories_sent.discard(key)
-                    if not permitted(self.bot.settings, interaction):
+                    if not authorized():
                         raise RuntimeError()
                     if previous is not None:
                         if original.author.id != self.bot.user.id or not original.embeds:
                             raise RuntimeError()
                         if previous['footer'] != embed.footer.text or previous.get('signature') != signature:
-                            if not permitted(self.bot.settings, interaction):
+                            if not authorized():
                                 raise RuntimeError()
                             if original.author.id != self.bot.user.id or not original.embeds:
                                 raise RuntimeError()
@@ -273,9 +283,6 @@ class RealmCommands(commands.Cog):
                     if key in self._stories_sent:
                         duplicates += 1
                         continue
-                    # Memory-only duplicate guard; bounded without silently forgetting sent posts.
-                    if not old_realm and sum(key[2] == source for key in self._stories_sent) >= 1000:
-                        raise RuntimeError()
                     attachment = artwork_file(embed)
                     try:
                         stage = 'send_story'
@@ -292,11 +299,10 @@ class RealmCommands(commands.Cog):
                         await self._story_deliveries.save(delivery_key, sent_message.id, embed.footer.text, signature=signature)
                 source_label = " from OLD Coastal S10 (October 31, 2026 to now, America/Chicago)" if old_realm else ""
                 message = f"Posted {posted} Stories embed(s){source_label} in this channel, oldest first. Updated {updated} existing post(s). Skipped {skipped} unsupported item(s), {duplicates} already posted."
-                if not old_realm:
-                    message += f" {remaining} beyond the 10-item limit."
                 message += f" Realm feed in Minecraft (copy this address): `minecraft://openRealmsStories?realmId={source}`"
                 if skipped:
                     message += " Items outside the date range, without a usable date, or with unsupported content were skipped." if old_realm else " Some feed fields or media references are not yet recognized; no raw metadata was published."
+                success = True
         except discord.Forbidden:
             message = f"Posted {posted} Stories embed(s), updated {updated}. Discord denied permission at {stage}. I need View Channel, Read Message History, Send Messages, Embed Links and Attach Files here."
         except discord.HTTPException as error:
@@ -304,12 +310,23 @@ class RealmCommands(commands.Cog):
         except StoriesError as error:
             message = f"Posted {posted} Stories embed(s). {StoriesError.reasons[error.reason]} (Code: {error.reason}.)"
         except HTTPFailure as error:
+            if error.retry_after is not None:
+                self._stories_retry_at = asyncio.get_running_loop().time() + max(0, error.retry_after)
             message = f"Posted {posted} Stories embed(s). Feed unavailable (HTTP {error.status}); no feed retry made."
         except RealmsError as error:
             message = f"Posted {posted} Stories embed(s). Stopped: {error.category}. No private error details shown."
         except Exception:
             message = f"Posted {posted} Stories embed(s). Stopped at {stage}: Stories access, response format, channel permissions, or authorization unavailable. No private error details shown."
-        await interaction.followup.send(message, ephemeral=True, allowed_mentions=discord.AllowedMentions.none())
+        return success, message
+
+    @realm.command(name="storiesauto", description="Enable or pause the five-minute Stories sync (OP Team)")
+    async def storiesauto(self, interaction: discord.Interaction, enabled: bool):
+        if not permitted(self.bot.settings, interaction):
+            await interaction.response.send_message("Realm commands require the Coastal OP Team role in Coastal Craft.", ephemeral=True)
+            return
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        await self.stories_sync.configure(enabled)
+        await interaction.followup.send("Stories auto-update " + ("enabled every five minutes." if enabled else "paused."), ephemeral=True)
 
     @realm.command(name="storiesdebug", description="Inspect Realm Stories and referenced Xbox posts (staff only)")
     @app_commands.describe(old_realm="Inspect OLD Coastal S10 instead of the current Realm")
