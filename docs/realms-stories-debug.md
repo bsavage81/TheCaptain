@@ -44,3 +44,7 @@ again. Do not remove the existing playeractivity route.
 Offline verification uses synthetic responses only. This workspace has no live
 Realm credentials, so no live feed result is claimed. Run the command after
 deployment to obtain that result.
+
+The separate opt-in `/realm storiespost` command can now publish supported feed
+content on staff invocation; see [Stories posting](realms-stories-post.md). The
+debug command itself remains private and never forwards content.

@@ -1,4 +1,6 @@
 """Private Coastal OP Team views of the selected Realm."""
+import asyncio
+
 import discord
 from discord import app_commands
 from discord.ext import commands
@@ -70,6 +72,8 @@ class RealmCommands(commands.Cog):
 
     def __init__(self, bot, *, runtime=None):
         self.bot = bot
+        self._stories_post_lock = asyncio.Lock()
+        self._stories_sent = set()
         self.runtime = runtime if runtime is not None else RealmRuntime(bot.settings)
         self.panels = PanelController(bot, self.runtime)
         self.metrics_panels = MetricsController(bot, self.runtime)
@@ -162,6 +166,50 @@ class RealmCommands(commands.Cog):
     async def cog_app_command_error(self, interaction, error):
         send = interaction.followup.send if interaction.response.is_done() else interaction.response.send_message
         await send("Realm information is unavailable. An operator may need to restore credentials or service access.", ephemeral=True)
+
+    @realm.command(name="storiespost", description="Post current Realm Stories once in this channel (OP Team)")
+    async def storiespost(self, interaction: discord.Interaction):
+        if not permitted(self.bot.settings, interaction):
+            await interaction.response.send_message("Realm commands require the Coastal OP Team role in Coastal Craft.", ephemeral=True)
+            return
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        from .stories_feed import render_feed
+        from utils.integrations.realms.errors import HTTPFailure
+        posted = 0
+        try:
+            async with self._stories_post_lock:
+                channel = interaction.channel
+                if (channel is None or getattr(getattr(channel, "guild", None), "id", None) != interaction.guild_id
+                        or not permitted(self.bot.settings, interaction)):
+                    raise RuntimeError()
+                permissions = channel.permissions_for(interaction.guild.me)
+                can_send = permissions.send_messages_in_threads if isinstance(channel, discord.Thread) else permissions.send_messages
+                if not permissions.view_channel or not can_send or not permissions.embed_links:
+                    await interaction.followup.send("I need View Channel, Send Messages, and Embed Links here.", ephemeral=True)
+                    return
+                entries, skipped, remaining = render_feed(await self.runtime.story_feed())
+                duplicates = 0
+                for identity, embed in entries:
+                    if not permitted(self.bot.settings, interaction):
+                        raise RuntimeError()
+                    key = (interaction.guild_id, channel.id, identity)
+                    if key in self._stories_sent:
+                        duplicates += 1
+                        continue
+                    # Memory-only duplicate guard; bounded without silently forgetting sent posts.
+                    if len(self._stories_sent) >= 1000:
+                        raise RuntimeError()
+                    await channel.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
+                    self._stories_sent.add(key)
+                    posted += 1
+                message = f"Posted {posted} Stories embed(s) in this channel. Skipped {skipped} unsupported item(s), {duplicates} already posted; {remaining} beyond the 10-item limit."
+                if skipped:
+                    message += " Some feed fields or media references are not yet recognized; no raw metadata was published."
+        except HTTPFailure as error:
+            message = f"Posted {posted} Stories embed(s). Feed unavailable (HTTP {error.status}); no feed retry made."
+        except Exception:
+            message = f"Posted {posted} Stories embed(s). Stopped: Stories access, response format, channel permissions, or authorization unavailable. No private error details shown."
+        await interaction.followup.send(message, ephemeral=True, allowed_mentions=discord.AllowedMentions.none())
 
     @realm.command(name="storiesdebug", description="Temporary redacted Stories feed diagnostic (staff only)")
     async def storiesdebug(self, interaction: discord.Interaction):

@@ -65,12 +65,18 @@ class RealmsClient:
                 continue
             raise HTTPFailure(response.status, response.retry_after)
 
+    async def story_feed(self):
+        """One selected-Realm feed GET, independent of player activity."""
+        if not self.config.selected_realm_id:
+            raise AccessDenied()
+        return await self.request("GET", "/api/v1.0/worlds/" + self.config.selected_realm_id + "/stories")
+
     async def stories_debug(self):
         """One feed GET; discard raw values and return only a structural summary."""
         if not self.config.selected_realm_id:
             raise AccessDenied()
         from .stories_debug import summarize
-        body = await self.request("GET", "/api/v1.0/worlds/" + self.config.selected_realm_id + "/stories")
+        body = await self.story_feed()
         return "HTTP status: 200\n" + summarize(body)
 
     async def metrics(self):
