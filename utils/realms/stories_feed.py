@@ -80,34 +80,34 @@ def timestamp(value):
 
 
 EVENTS = {
-    'NewMember': ('New Realm member', 'A new member event was recorded.'),
-    'FirstCraftedNetherite': ('First netherite crafted', 'The first netherite crafting event was recorded.'),
-    'FirstEnchantment': ('First enchantment', 'The first enchantment event was recorded.'),
-    'RealmCreated': ('Realm created', 'The Realm was created.'),
+    'NewMember': ('New Realm member', 'joined the Realm'),
+    'FirstCraftedNetherite': ('Upgraded to Netherite', 'upgraded to Netherite'),
+    'FirstEnchantment': ('Discovered enchanting', 'discovered enchanting'),
 }
 
 
-def realm_event_text(event):
-    kind = event.get('eventName')
-    if isinstance(kind, str) and kind in EVENTS:
-        return EVENTS[kind]
-    return 'Realm Event', 'A Realm event was recorded.'
-
-
-def participant_text(event, names):
+def player_phrase(event, names):
     players = event.get('players')
-    if not isinstance(players, list):
-        return None
-    # References are not proof that every listed player performed the action.
-    identities = set(p for p in players if isinstance(p, str))
-    known = [names[p] for p in sorted(identities) if p in names]
-    missing = len(identities) - len(known)
-    parts = known[:8]
-    if len(known) > 8:
-        parts.append(f'{len(known) - 8} more named players')
-    if missing:
-        parts.append(f'{missing} name(s) unavailable')
-    return (f'{len(identities)} player reference(s): ' + (', '.join(parts) or 'none'))[:1024]
+    ids = list(dict.fromkeys(p for p in players if isinstance(p, str))) if isinstance(players, list) else []
+    known = [names[p] for p in ids if p in names][:5]
+    others = len(ids) - len(known)
+    if not known:
+        return 'A player' if len(ids) <= 1 else f'{len(ids)} players'
+    if others:
+        return ', '.join(known) + f' and {others} other player' + ('s' if others != 1 else '')
+    if len(known) == 1:
+        return known[0]
+    return ', '.join(known[:-1]) + ' and ' + known[-1]
+
+
+def realm_event_text(event, names):
+    kind = event.get('eventName')
+    if kind == 'RealmCreated':
+        return 'Realm created', 'A new adventure has begun! What will the story of this Realm be? You decide.'
+    if isinstance(kind, str) and kind in EVENTS:
+        title, action = EVENTS[kind]
+        return title, player_phrase(event, names) + ' ' + action + '.'
+    return 'Realm Event', 'A Realm event was recorded.'
 
 
 def render_feed(body):
@@ -121,7 +121,9 @@ def render_feed(body):
     if len(result) > 1000:
         raise ProtocolError()
     events = {}
-    names = {}
+    supplied_names = body.get('playerNames', {})
+    names = {x: clean(name, 80) for x, name in supplied_names.items()
+             if isinstance(x, str) and isinstance(name, str) and name.strip() and not name.isdecimal()} if isinstance(supplied_names, dict) else {}
     for item in result:
         if not isinstance(item, dict):
             continue
@@ -130,7 +132,7 @@ def render_feed(body):
             identity = author.get('id')
             name = author.get('modernGamertag') or author.get('name')
             if isinstance(identity, str) and isinstance(name, str) and name.strip() and not name.isdecimal():
-                names[identity] = clean(name, 80)
+                names.setdefault(identity, clean(name, 80))
     club_ids = {item.get('feedItemId') for item in result if isinstance(item, dict) and isinstance(item.get('feedItemId'), str)}
     for event in realm:
         if not isinstance(event, dict):
@@ -159,7 +161,7 @@ def render_feed(body):
         text, media = story_text(item), images(item)
         event_title = None
         if event is not None:
-            event_title, text = realm_event_text(event)
+            event_title, text = realm_event_text(event, names)
         if not text and not media:
             # Avoid publishing IDs, event metadata, or empty placeholder stories.
             skipped += 1
@@ -176,10 +178,6 @@ def render_feed(body):
                     name += '#' + suffix
                 avatar = image_url(author.get('imageUrl'))
                 embed.set_author(name=clean(name, 80), **({'icon_url': avatar} if avatar else {}))
-        if event is not None:
-            participants = participant_text(event, names)
-            if participants:
-                embed.add_field(name='Players referenced by event', value=participants, inline=False)
         if media:
             embed.set_image(url=media[0])
         if len(media) > 1:

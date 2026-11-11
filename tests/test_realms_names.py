@@ -236,3 +236,23 @@ async def test_expired_names_are_not_displayed_when_lookup_fails():
     clock.value += 86401
     api.gamertags.side_effect = HTTPFailure(403)
     assert (await names.enrich(activity)).data.players[0].name is None
+
+
+async def test_event_names_resolve_offline_players_through_existing_cache():
+    names, clock, store, api = cache()
+    assert await names.resolve(['123', '123', 'invalid']) == {'123': 'Synthetic Sailor'}
+    api.gamertags.assert_awaited_once_with(['123'])
+    assert await names.resolve(['123']) == {'123': 'Synthetic Sailor'}
+    assert api.gamertags.await_count == 1
+    store.save_gamertags.assert_called_once()
+
+
+async def test_event_name_lookup_failure_is_bounded_and_recovers():
+    names, clock, store, api = cache()
+    api.gamertags.side_effect = HTTPFailure(429, 120)
+    assert await names.resolve(['123']) == {}
+    assert await names.resolve(['123']) == {}
+    assert api.gamertags.await_count == 1
+    clock.value += 120
+    api.gamertags.side_effect = None
+    assert await names.resolve(['123']) == {'123': 'Synthetic Sailor'}

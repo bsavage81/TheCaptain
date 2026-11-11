@@ -62,21 +62,20 @@ class GamertagCache:
             players.append(replace(player, name=player.name or name))
         return Snapshot(replace(snapshot.data, players=tuple(players)), snapshot.observed_at)
 
-    async def enrich(self, snapshot):
+    async def _refresh(self, identities):
         now = self.clock()
         if not self.loaded:
             if now < self.next_lookup:
-                return snapshot
+                return
             try:
                 self._restore(await self._io(self.store.load_gamertags))
                 self.loaded = True
             except Exception:
                 self.next_lookup = now + 900
                 log.warning("Xbox gamertag cache unavailable")
-                return snapshot
-        wanted = sorted({p.xuid for p in snapshot.data.players
-                         if p.online is True and not p.name and valid_xuid(p.xuid)
-                         and (p.xuid not in self.entries or self.entries[p.xuid]["expires"] <= now)})[:100]
+                return
+        wanted = sorted({x for x in identities if valid_xuid(x)
+                         and (x not in self.entries or self.entries[x]["expires"] <= now)})[:100]
         if wanted and now >= self.next_lookup:
             self.next_lookup = now + self.lookup_interval
             try:
@@ -102,4 +101,17 @@ class GamertagCache:
             except Exception:
                 self.next_lookup = max(self.next_lookup, self.clock() + 900)
                 log.warning("Xbox gamertag cache persistence unavailable")
+
+
+    async def resolve(self, identities):
+        """Resolve event participants without requiring or inventing live presence."""
+        wanted = {x for x in identities if valid_xuid(x)}
+        await self._refresh(wanted)
+        now = self.clock()
+        return {x: self.entries[x]["name"] for x in wanted
+                if x in self.entries and self.entries[x]["expires"] > now and self.entries[x]["name"]}
+
+    async def enrich(self, snapshot):
+        await self._refresh(p.xuid for p in snapshot.data.players
+                            if p.online is True and not p.name)
         return self._apply(snapshot)

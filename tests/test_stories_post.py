@@ -197,9 +197,10 @@ def test_merge_realm_event_replaces_generic_text_using_exact_reference():
     entries, skipped, remaining = render_feed(body)
     embed = entries[0][1]
     assert len(entries) == 1 and skipped == remaining == 0
-    assert embed.title == 'First enchantment' and 'Generic fallback' not in embed.description
+    assert embed.title == 'Discovered enchanting' and 'Generic fallback' not in embed.description
     assert embed.timestamp.day == 10
-    assert 'Builder' in embed.fields[0].value and '1 name(s) unavailable' in embed.fields[0].value
+    assert embed.description == 'Builder and 1 other player discovered enchanting.'
+    assert not embed.fields
     assert '123456' not in str(embed.to_dict()) and '654321' not in str(embed.to_dict())
     assert not embed.author.name  # Posting author is not assumed to be event actor.
 
@@ -226,6 +227,31 @@ def test_large_new_member_reference_list_does_not_claim_all_joined():
     body = feed(); body['realmEvents'] = [{'clubsPostId': 'private-id', 'eventName': 'NewMember',
         'players': [str(i) for i in range(14)]}]
     embed = render_feed(body)[0][0][1]
-    assert '14 player reference(s)' in embed.fields[0].value
-    assert '14 players joined' not in embed.description
-    assert 'Players referenced' in embed.fields[0].name
+    assert embed.description == '14 players joined the Realm.'
+    assert not embed.fields
+    assert 'Players referenced' not in str(embed.to_dict())
+
+
+def test_resolved_event_names_and_group_join_wording():
+    body = feed()
+    body['realmEvents'] = [{'clubsPostId': 'private-id', 'eventName': 'NewMember',
+                            'players': [str(i) for i in range(1, 15)]}]
+    body['playerNames'] = {str(i): f'Sailor{i}' for i in range(1, 15)}
+    embed = render_feed(body)[0][0][1]
+    assert embed.description == 'Sailor1, Sailor2, Sailor3, Sailor4, Sailor5 and 9 other players joined the Realm.'
+    body['realmEvents'][0].update(eventName='FirstCraftedNetherite', players=['2'])
+    assert render_feed(body)[0][0][1].description == 'Sailor2 upgraded to Netherite.'
+    body['realmEvents'][0].update(eventName='FirstEnchantment', players=['2'])
+    assert render_feed(body)[0][0][1].description == 'Sailor2 discovered enchanting.'
+
+
+async def test_runtime_resolves_event_ids_with_existing_cache_and_keeps_feed_on_failure():
+    body = dict(feed(), realmEvents=[{'players': ['123', '456', '123']}])
+    rt = runtime(); rt.client.club_story_feed = AsyncMock(return_value=body)
+    rt.names = NS(resolve=AsyncMock(return_value={'123': 'Sailor'}))
+    result = await rt.club_story_feed()
+    rt.names.resolve.assert_awaited_once_with({'123', '456'})
+    assert result['playerNames'] == {'123': 'Sailor'}
+    rt.names.resolve.side_effect = RuntimeError('canary-secret')
+    assert await rt.club_story_feed() == body
+    await rt.close()

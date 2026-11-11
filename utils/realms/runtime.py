@@ -232,7 +232,18 @@ class RealmRuntime:
                 if self._retry_at > self._clock():
                     raise HTTPFailure(429, self._retry_at - self._clock())
                 async with asyncio.timeout(120):
-                    return await self.client.club_story_feed()
+                    body = await self.client.club_story_feed()
+                    if self.names is not None:
+                        # The existing name cache handles batching, TTLs and backoff.
+                        events = body.get("realmEvents", [])
+                        identities = {x for event in events if isinstance(event, dict)
+                                      for x in (event.get("players") if isinstance(event.get("players"), list) else [])
+                                      if isinstance(x, str)}
+                        try:
+                            body = dict(body, playerNames=await self.names.resolve(identities))
+                        except Exception:
+                            log.warning("Stories participant names unavailable")
+                    return body
         finally:
             self._tasks.discard(task)
 

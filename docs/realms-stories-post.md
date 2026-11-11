@@ -77,13 +77,22 @@ names get a neutral Realm Event message. Club-only items, including screenshot
 posts, retain their captions and authors. Realm events missing from the returned
 club page are included once, subject to the existing 10-item total limit.
 
-Player references are displayed separately from the event text. Names are resolved
-only when an exact player identifier matches an author identity already present
-in the club response; other names are counted as unavailable. No additional profile
-requests occur and raw XUIDs are never published. A posting author is not assumed
-to be the player who performed an automatic event, so matched event embeds omit
-the club posting-author header. A NewMember event listing several player IDs does
-not establish that all those players joined; these are labeled player references.
+Event participant names are resolved with Captain's existing Xbox gamertag cache.
+The same positive/negative TTLs, 100-entry bound, batching, cooldown and backoff
+apply to both live observations and Story participants. Resolution does not require
+players to be online and does not create presence observations. Missing names can
+trigger the existing read-only Xbox profile batch lookup (an HTTP POST that reads
+Gamertag settings); cache updates use the existing encrypted file store, with no
+new tables or configuration. Profile failures/cooldowns do not block Stories.
+
+Names from the cache take precedence over club posting-author names. Posting
+identity remains separate from event participant identity: a club author is never
+assumed to be an event actor without an exact XUID match. Known events now use
+natural sentences, for example a named player joined the Realm, discovered
+enchanting or upgraded to Netherite. Grouped joins list up to five names and an
+"N other players" count, matching the supplied Minecraft screenshots. Missing
+names become "A player" or a player count; raw XUIDs and technical player-reference
+fields are never shown. Realm creation uses the supplied in-game welcome wording.
 
 For screenshot media, direct `gameMediaContentLocators` HTTPS URLs are preferred:
 Download, then Thumbnail_Large, then Thumbnail_Small. The existing screenshotUri
@@ -94,3 +103,18 @@ generic club event placeholder text. Discord image rendering remains a live chec
 
 Duplicate IDs remain unchanged, so already-posted items are skipped within the
 same bot session; restarting the bot permits reposting the updated embeds.
+
+## Default event artwork investigation
+
+Mojang's `bedrock-samples` main tree was searched recursively, avoiding GitHub's
+1,000-item directory listing limit. Realms UI icons and promotional art are present,
+including `resource_pack/textures/ui/realmsStoriesIcon.png` and
+`resource_pack/textures/ui/realms_header_art.png`, but no clearly identified matching
+NewMember, FirstEnchantment, FirstCraftedNetherite or RealmCreated card illustrations
+were found. Icons, block textures and unrelated art have not been substituted for
+those illustrations. This is a search finding, not proof the assets are absent or
+that a particular client bundle contains them. No sample-repository images were
+added to the embeds. Player screenshot rendering continues to use the verified
+club media URLs.
+
+Repository inspected: https://github.com/Mojang/bedrock-samples/tree/main/resource_pack/textures
