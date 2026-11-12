@@ -77,6 +77,8 @@ class RealmRuntime:
         self._history_retry_at = 0
         self._history_failures = 0
         self._history_snapshot = None
+        self._archive_history_retry_at = 0
+        self._archive_history_snapshot = None
         self._metrics_snapshot = None
         self._metrics_retry_at = 0
         self._metrics_available = False
@@ -328,6 +330,42 @@ class RealmRuntime:
                 self._history_snapshot = snapshot
                 self._history_retry_at = self._clock() + 3600
                 return snapshot
+        finally:
+            self._tasks.discard(task)
+
+    async def archive_stories(self):
+        """Manual old-Realm activity fetch; isolated transport, shared auth and lock."""
+        from utils.integrations.realms.errors import AccessDenied
+        from utils.integrations.realms.client import RealmsClient
+        if not self._history_enabled or self._closed or self.client is None:
+            raise AccessDenied()
+        task = asyncio.current_task()
+        self._tasks.add(task)
+        try:
+            async with self._lock:
+                if self._closed:
+                    raise AccessDenied()
+                if self._retry_at > self._clock():
+                    raise HTTPFailure(429, self._retry_at-self._clock())
+                if self._archive_history_retry_at > self._clock():
+                    if self._archive_history_snapshot is not None:
+                        return self._archive_history_snapshot
+                    raise HTTPFailure(429, self._archive_history_retry_at-self._clock())
+                self._archive_history_retry_at = self._clock()+3660
+                try:
+                    async with asyncio.timeout(60):
+                        target = await self.client.old_stories_realm_id()
+                        if target == self.config.selected_realm_id:
+                            raise AccessDenied()
+                        async with self._transport_factory(selected_realm_id=target) as transport:
+                            archive = RealmsClient(transport, self.client.authorization,
+                                                  replace(self.config, selected_realm_id=target), self.client.principal)
+                            snapshot = await archive.stories()
+                    self._archive_history_snapshot = (target, snapshot)
+                    return self._archive_history_snapshot
+                except Exception:
+                    self._archive_history_retry_at = self._clock()+60
+                    raise
         finally:
             self._tasks.discard(task)
 

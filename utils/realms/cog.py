@@ -405,22 +405,82 @@ class RealmCommands(commands.Cog):
                    if enabled else "Daily Realm reports disabled. Existing messages are preserved.")
         await interaction.followup.send(message, ephemeral=True, allowed_mentions=discord.AllowedMentions.none())
 
-    @daily_group.command(name="preview", description="Privately preview yesterday's observed Realm timeline")
+    @daily_group.command(name="preview", description="Privately preview today's observed Realm timeline")
     async def daily_preview(self, interaction: discord.Interaction):
         await self.daily_response(interaction, preview=True)
 
-    @daily_group.command(name="refresh", description="Refresh yesterday's existing public report")
+    @daily_group.command(name="refresh", description="Refresh today's public report")
     async def daily_refresh(self, interaction: discord.Interaction):
         await self.daily_response(interaction, preview=False)
 
-    async def daily_response(self, interaction, *, preview):
+    @daily_group.command(name="import", description="Import available activity timelines from current and OLD Coastal S10")
+    async def daily_import(self, interaction: discord.Interaction):
         if not permitted(self.bot.settings, interaction):
             await interaction.response.send_message("Realm commands require the Coastal OP Team role in Coastal Craft.", ephemeral=True)
             return
         await interaction.response.defer(ephemeral=True, thinking=True)
-        from .daily import DailyUnavailable
+        from .daily import database
+        from utils.players.activity import ingest
+        from utils.players.activity_models import RealmActivity
+        from .daily_timeline import ZONE
+        async with self.daily_reports.lock:
+            if not self.bot.settings.get('realm_history_enabled'):
+                await interaction.followup.send("Enable activity history with /realm daily enable first.", ephemeral=True)
+                return
+            if not await database(RealmActivity.table_exists):
+                await interaction.followup.send("The Realm activity table is missing; an operator must apply the activity migration.", ephemeral=True)
+                return
+            results = []
+            for label, old in (('Current Realm', False), ('OLD Coastal S10', True)):
+                if not permitted(self.bot.settings, interaction):
+                    return
+                try:
+                    if old:
+                        realm, snapshot = await self.runtime.archive_stories()
+                    else:
+                        realm = self.runtime.config.selected_realm_id
+                        snapshot = await self.runtime.stories()
+                    if not permitted(self.bot.settings, interaction):
+                        return
+                    counts = await database(lambda: ingest(snapshot, realm))
+                    valid = [item for item in snapshot.data if item.status == 'observed']
+                    coverage = (f" Returned coverage: {min(i.start for i in valid).astimezone(ZONE):%Y-%m-%d %H:%M %Z} to "
+                                f"{max(i.end for i in valid).astimezone(ZONE):%Y-%m-%d %H:%M %Z}." if valid
+                                else ' No usable activity intervals returned; history may be unavailable.')
+                    results.append(f"{label}: {counts['created']} added, {counts['existing']} already stored, {counts['quarantined']} quarantined." + coverage)
+                except Exception as error:
+                    import logging
+                    logging.getLogger(__name__).warning('Manual timeline import unavailable for %s (%s)', label, type(error).__name__)
+                    results.append(f"{label}: activity import unavailable or cooling down; no missing history was interpreted as inactivity.")
+            await interaction.followup.send('\n'.join(results) +
+                '\nAPI timestamps are preserved, including hourly boundaries. These are observed intervals, not verified sessions. Each Realm is stored separately; repeated imports do not duplicate intervals. No timeline is inferred from Story posts.',
+                ephemeral=True, allowed_mentions=discord.AllowedMentions.none())
+
+    @daily_group.command(name="history", description="Preview or post stored Realm activity for a specific date")
+    @app_commands.describe(day="Report date in YYYY-MM-DD format (America/Chicago)",
+                           publish="Post to the configured report channel; otherwise preview privately")
+    async def daily_history(self, interaction: discord.Interaction, day: str, publish: bool = False):
+        if not permitted(self.bot.settings, interaction):
+            await interaction.response.send_message("Realm commands require the Coastal OP Team role in Coastal Craft.", ephemeral=True)
+            return
+        from datetime import date
         try:
-            result = await self.daily_reports.refresh(preview=preview)
+            selected = date.fromisoformat(day)
+            if selected.isoformat() != day:
+                raise ValueError()
+        except ValueError:
+            await interaction.response.send_message("Use a date in YYYY-MM-DD format.", ephemeral=True)
+            return
+        await self.daily_response(interaction, preview=not publish, day=selected)
+
+    async def daily_response(self, interaction, *, preview, day=None):
+        if not permitted(self.bot.settings, interaction):
+            await interaction.response.send_message("Realm commands require the Coastal OP Team role in Coastal Craft.", ephemeral=True)
+            return
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        from .daily import DailyUnavailable, report_caption
+        try:
+            result = await self.daily_reports.refresh(preview=preview, day=day)
         except DailyUnavailable as error:
             await interaction.followup.send(str(error), ephemeral=True, allowed_mentions=discord.AllowedMentions.none())
             return
@@ -429,7 +489,7 @@ class RealmCommands(commands.Cog):
             if permitted(self.bot.settings, interaction):
                 attachment = discord.File(io.BytesIO(png), filename="realm-daily.png")
                 try:
-                    await interaction.followup.send(embed=embed, file=attachment, ephemeral=True,
+                    await interaction.followup.send(content=report_caption(embed), file=attachment, ephemeral=True,
                                                     allowed_mentions=discord.AllowedMentions.none())
                 finally:
                     attachment.close()

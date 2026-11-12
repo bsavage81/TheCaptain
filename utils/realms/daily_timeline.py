@@ -113,6 +113,8 @@ def render(day, groups, names):
     draw.text((1170, 32), f'{day:%B %d, %Y}', font=heading, fill='#e3edf5', anchor='ra')
     draw.text((1170, 68), f'America/Chicago · {hours}-hour day', font=small, fill='#afc5d7', anchor='ra')
     left, width, top = 300, 730, 164
+    now = datetime.now(UTC)
+    future_x = left + width * max(0, min(1, (now-lo).total_seconds()/elapsed))
     ticks = axis_ticks(day)
     draw.text((40, 135), 'PLAYER', font=small, fill='#8fa7bb')
     draw.text((1160, 135), 'TOTAL', font=small, fill='#8fa7bb', anchor='ra')
@@ -130,6 +132,8 @@ def render(day, groups, names):
         if second:
             draw.text((58, y+34), fitted(second, regular, 220), font=regular, fill='#9eb6ca')
         draw.rectangle((left, y+23, left+width, y+42), fill='#283949')
+        if now < hi:
+            draw.rectangle((future_x, y+23, left+width, y+42), fill='#111b28')
         for stamp, _ in ticks:
             x = left+width*(stamp-lo).total_seconds()/elapsed
             draw.line((x, y+5, x, y+58), fill='#354a5b')
@@ -142,7 +146,9 @@ def render(day, groups, names):
     if not groups:
         draw.text((40, top+20), 'No activity intervals observed; coverage may be unavailable.', font=regular, fill='#afc5d7')
     footer = 'Observed activity · Missing data does not mean inactivity · Coverage is unverified'
-    if hours != 24:
+    if lo <= now < hi:
+        footer = 'In progress · Dark track = not yet elapsed · Missing data does not mean inactivity'
+    elif hours != 24:
         footer = f'{hours}-hour DST day · Bars use elapsed time · Coverage is unverified'
     draw.text((30, image.height-34), footer, font=small, fill='#8fa7bb')
     output = io.BytesIO()

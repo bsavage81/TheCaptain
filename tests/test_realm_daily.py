@@ -48,7 +48,9 @@ async def test_delivery_restarts_and_uncertain_send(tmp_path, monkeypatch):
     class Channel:
         guild = NS(id=1)
         async def send(self, **kwargs):
-            message = NS(id=100, author=NS(id=99), embeds=[kwargs['embed']], edit=AsyncMock())
+            assert 'embed' not in kwargs and 'content' in kwargs
+            message = NS(id=100, author=NS(id=99), embeds=[],
+                         attachments=[NS(filename=kwargs['file'].filename)], edit=AsyncMock())
             messages.append(message)
             if len(messages) == 1:
                 raise TimeoutError('accepted but response lost')
@@ -83,6 +85,7 @@ async def test_delivery_restarts_and_uncertain_send(tmp_path, monkeypatch):
         assert DailyReport.select().count() == 1
     assert len(messages) == 1
     assert messages[0].edit.await_count == 1
+    assert messages[0].edit.call_args.kwargs['embeds'] == []
 
 
 def test_display_order_names_colors_and_ticks():
@@ -142,3 +145,66 @@ def test_database_startup_creates_daily_tables_and_preserves_records(tmp_path):
         assert DailyReport.get_by_id(identity).message == 456
         assert DailyReport.select().count() == 1
         assert BotData.get_by_id(1).prefix == '!'
+
+
+def test_attachment_and_legacy_report_markers():
+    from utils.realms.daily import matches_report
+    marker = 'realm-daily:abc'
+    legacy = discord.Embed().set_footer(text=marker)
+    assert matches_report(NS(embeds=[legacy], attachments=[]), marker)
+    assert matches_report(NS(embeds=[], attachments=[NS(filename='realm-daily-abc.png')]), marker)
+    assert not matches_report(NS(embeds=[], attachments=[NS(filename='realm-daily-other.png')]), marker)
+
+
+@pytest.mark.asyncio
+async def test_current_day_rollover_finalizes_previous_message(monkeypatch):
+    from datetime import datetime
+    from utils.realms.daily import ZONE
+    import utils.realms.daily as module
+    class FixedTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 11, 12, 0, 5, tzinfo=ZONE).astimezone(tz)
+    monkeypatch.setattr(module, 'datetime', FixedTime)
+    monkeypatch.setattr(module, 'database', AsyncMock(return_value=True))
+    bot = NS(settings={'Coastal': 1, 'realms': {'enabled': True}, 'realm_history_enabled': True,
+                       'realm_daily': {'enabled': True, 'channel_id': 2}})
+    controller = DailyController(bot, NS(config=NS(selected_realm_id='3')))
+    controller.collect = AsyncMock()
+    controller.publish = AsyncMock(return_value=True)
+    await controller.poll.coro(controller)
+    assert [call.args[0] for call in controller.publish.call_args_list] == [date(2026, 11, 11), date(2026, 11, 12)]
+    await controller.poll.coro(controller)
+    assert controller.publish.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_history_without_observations_is_not_published(tmp_path):
+    from utils.realms.daily import DailyUnavailable
+    backend = SqliteDatabase(tmp_path / 'history-empty.sqlite')
+    activity_migrate(backend, apply=True, backup_verified=True)
+    migrate(backend, apply=True, backup_verified=True)
+    controller = DailyController(NS(settings={'Coastal': 1}, get_guild=lambda _: None),
+                                 NS(config=NS(selected_realm_id='3'), names=None))
+    with pytest.raises(DailyUnavailable, match='No stored activity'):
+        await controller.refresh(preview=True, day=date(2026, 10, 31))
+
+
+def test_dual_realm_import_keeps_hourly_intervals_separate_and_deduplicated(tmp_path):
+    from datetime import datetime, timezone
+    from utils.players.activity import ingest
+    from utils.players.activity_models import RealmActivity
+    from utils.integrations.realms.stories import parse_stories
+    from utils.integrations.realms.models import Snapshot
+    backend = SqliteDatabase(tmp_path / 'dual.sqlite')
+    activity_migrate(backend, apply=True, backup_verified=True)
+    now = datetime(2026, 11, 12, tzinfo=timezone.utc)
+    start = int(datetime(2026, 10, 31, tzinfo=timezone.utc).timestamp())
+    snapshot = Snapshot(parse_stories({'result': {'activity': {'123456': [{'s': start, 'e': start+3600}]}}}, now), now)
+    with backend.connection_context():
+        for realm in ('35868436', '11451943'):
+            assert ingest(snapshot, realm)['created'] == 1
+            assert ingest(snapshot, realm)['existing'] == 1
+        assert RealmActivity.select().count() == 2
+        assert {r.realm_id for r in RealmActivity.select()} == {'35868436', '11451943'}
+        assert all((r.end-r.start).total_seconds() == 3600 for r in RealmActivity.select())

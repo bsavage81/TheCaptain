@@ -1,6 +1,6 @@
 """Opt-in hourly collection and one recoverable public daily message."""
 import asyncio
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 import hashlib
 import io
 import json
@@ -43,11 +43,27 @@ async def database(call):
         raise
 
 
+def report_caption(embed):
+    fields = {field.name: field.value for field in embed.fields}
+    return (f"{fields.get('Unique observed players', '0')} observed players · "
+            f"{fields.get('Combined observed activity', '0h 00m')} combined activity · "
+            f"{fields.get('Observed activity intervals', '0')} observed intervals\n"
+            + fields.get('Collection status', 'Coverage is unverified.'))
+
+
+def matches_report(message, marker):
+    # Existing embed reports remain recoverable during the switch to attachments.
+    filename = marker.replace(':', '-') + '.png'
+    return (any(a.filename == filename for a in getattr(message, 'attachments', ()))
+            or any(e.footer.text == marker for e in message.embeds))
+
+
 class DailyController:
     def __init__(self, bot, runtime):
         self.bot, self.runtime = bot, runtime
         self.lock = asyncio.Lock()
         self.slot = None
+        self.finalized_day = None
         self.retry_at = None
 
     def enabled(self):
@@ -80,8 +96,8 @@ class DailyController:
                     raise ValueError('Choose a text channel in Coastal Craft.')
                 permissions = channel.permissions_for(channel.guild.me)
                 if not all(getattr(permissions, name, False) for name in
-                           ('view_channel', 'read_message_history', 'send_messages', 'embed_links', 'attach_files')):
-                    raise ValueError('I need View Channel, Read Message History, Send Messages, Embed Links, and Attach Files in that channel.')
+                           ('view_channel', 'read_message_history', 'send_messages', 'attach_files')):
+                    raise ValueError('I need View Channel, Read Message History, Send Messages, and Attach Files in that channel.')
             value = dict(enabled=enabled, channel_id=channel.id if enabled else current['channel_id'])
             validate_daily(value)
             def save():
@@ -169,6 +185,7 @@ class DailyController:
         names = display
         status = ('Last successful collection: ' + f'<t:{int(success.replace(tzinfo=timezone.utc).timestamp())}:f>'
                   if success else 'No successful automatic collection recorded.')
+        status += ('\nIn progress; future hours have not elapsed.' if day == datetime.now(ZONE).date() else '\nScheduled updates finalized; observations may be incomplete.')
         status += '\nLatest collection: ' + outcome + '. Coverage is partial and unverified.'
         embed = discord.Embed(title='Daily Realm Activity Summary',
                               description='Missing data does not establish inactivity.', color=0x78B84A)
@@ -178,7 +195,7 @@ class DailyController:
         embed.add_field(name='Collection status', value=status, inline=False)
         embed.set_image(url='attachment://realm-daily.png')
         # Include source interval count and merged spans; never publish identifiers.
-        content = ['season10-display-v2', day.isoformat(), embed.to_dict(), [(x, names.get(x), [(a.isoformat(), b.isoformat()) for a, b in spans])
+        content = ['season10-attachment-v3', day.isoformat(), embed.to_dict(), [(x, names.get(x), [(a.isoformat(), b.isoformat()) for a, b in spans])
                                      for x, spans in sorted(groups.items())]]
         signature = hashlib.sha256(json.dumps(content, sort_keys=True).encode()).hexdigest()
         return embed, signature, groups, names
@@ -208,30 +225,30 @@ class DailyController:
             if row.message:
                 # A deleted original needs staff intervention; never silently republish.
                 message = await channel.fetch_message(row.message)
-                if message.author.id != self.bot.user.id or not any(e.footer.text == marker for e in message.embeds):
+                if message.author.id != self.bot.user.id or not matches_report(message, marker):
                     raise ValueError('Daily report identity mismatch')
             elif row.pending_since:
                 if now < row.pending_since+timedelta(minutes=5):
                     return False
                 # Exhaust the relevant history. Any read failure prevents a retry.
                 async for candidate in channel.history(limit=None, after=row.pending_since.replace(tzinfo=timezone.utc)-timedelta(minutes=1), oldest_first=True):
-                    if candidate.author.id == self.bot.user.id and any(e.footer.text == marker for e in candidate.embeds):
+                    if candidate.author.id == self.bot.user.id and matches_report(candidate, marker):
                         message = candidate
                         break
                 if message:
                     await database(lambda: DailyReport.update(message=message.id).where(DailyReport.id == row.id).execute())
             embed, signature, groups, names = await self.report(day)
-            embed.set_footer(text=marker)
+            caption = report_caption(embed)
             if message and row.signature == signature:
                 return True
             png = await asyncio.to_thread(render, day, groups, names)
-            attachment = discord.File(io.BytesIO(png), filename='realm-daily.png')
+            attachment = discord.File(io.BytesIO(png), filename=marker.replace(':', '-') + '.png')
             try:
                 if message:
-                    await message.edit(embed=embed, attachments=[attachment], allowed_mentions=discord.AllowedMentions.none())
+                    await message.edit(content=caption, embeds=[], attachments=[attachment], allowed_mentions=discord.AllowedMentions.none())
                 else:
                     await database(lambda: DailyReport.update(pending_since=utcnow()).where(DailyReport.id == row.id).execute())
-                    message = await channel.send(embed=embed, file=attachment, allowed_mentions=discord.AllowedMentions.none())
+                    message = await channel.send(content=caption, file=attachment, allowed_mentions=discord.AllowedMentions.none())
             finally:
                 attachment.close()
             await database(lambda: DailyReport.update(message=message.id, signature=signature, pending_since=None).where(
@@ -240,7 +257,7 @@ class DailyController:
         finally:
             await database(lambda: DailyReport.update(lease=None).where(DailyReport.id == row.id).execute())
 
-    async def refresh(self, *, preview=False):
+    async def refresh(self, *, preview=False, day=None):
         async with self.lock:
             if not preview and not self.enabled():
                 raise DailyUnavailable('Daily reports are disabled. Use /realm daily enable and choose a channel first.')
@@ -254,7 +271,17 @@ class DailyController:
                 if not preview:
                     stage = 'collection'
                     await self.collect()
-                day = datetime.now(ZONE).date()-timedelta(days=1)
+                today = datetime.now(ZONE).date()
+                day = day or today
+                if day > today:
+                    raise DailyUnavailable('Choose today or a past date in YYYY-MM-DD format.')
+                if day < today:
+                    lo, hi = (v.replace(tzinfo=None) for v in window(day))
+                    if not await database(lambda: RealmActivity.select().where(
+                            (RealmActivity.realm_id == self.runtime.config.selected_realm_id) &
+                            (RealmActivity.status == 'observed') & (RealmActivity.start < hi) &
+                            (RealmActivity.end > lo)).exists()):
+                        raise DailyUnavailable('No stored activity observations overlap that date for the selected Realm. Missing history does not establish inactivity.')
                 if preview:
                     stage = 'report data'
                     embed, _, groups, names = await self.report(day)
@@ -285,7 +312,17 @@ class DailyController:
                 # Restart catch-up targets only yesterday; repeated local hours share a slot.
                 slot = (now.date(), now.hour)
                 if now.minute >= 5 and self.slot != slot and (self.retry_at is None or utcnow() >= self.retry_at):
-                    if await self.publish(now.date()-timedelta(days=1)):
+                    yesterday = now.date()-timedelta(days=1)
+                    if self.finalized_day != yesterday:
+                        config = self.bot.settings['realm_daily']
+                        existing = await database(lambda: DailyReport.select().where(
+                            (DailyReport.guild == self.bot.settings['Coastal']) &
+                            (DailyReport.channel == config['channel_id']) &
+                            (DailyReport.realm == self.runtime.config.selected_realm_id) &
+                            (DailyReport.day == yesterday)).exists())
+                        if not existing or await self.publish(yesterday):
+                            self.finalized_day = yesterday
+                    if await self.publish(now.date()):
                         self.slot = slot
         except Exception:
             self.retry_at = utcnow()+timedelta(minutes=5)
