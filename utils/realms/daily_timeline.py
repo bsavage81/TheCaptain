@@ -79,6 +79,18 @@ def axis_ticks(day):
             for hour, label in ((0, '12 AM'), (6, '6 AM'), (12, '12 PM'), (18, '6 PM'))] + [(hi, '12 AM')]
 
 
+def load_font(size, bold=False):
+    from PIL import ImageFont
+    # Use host fonts when present; Pillow's bundled font remains portable.
+    for path in (('DejaVuSans-Bold.ttf' if bold else 'DejaVuSans.ttf'),
+                 ('C:/Windows/Fonts/segoeuib.ttf' if bold else 'C:/Windows/Fonts/segoeui.ttf')):
+        try:
+            return ImageFont.truetype(path, size)
+        except OSError:
+            pass
+    return ImageFont.load_default(size=size)
+
+
 def render(day, groups, names, collected_at=None):
     from PIL import Image, ImageDraw, ImageFont
     lo, hi = window(day)
@@ -87,15 +99,7 @@ def render(day, groups, names, collected_at=None):
     image = Image.new('RGB', (1200, 212 + max(1, len(groups))*70), '#101a25')
     draw = ImageDraw.Draw(image)
 
-    def font(size, bold=False):
-        # Use host fonts when present; Pillow's bundled font remains portable.
-        for path in (('DejaVuSans-Bold.ttf' if bold else 'DejaVuSans.ttf'),
-                     ('C:/Windows/Fonts/segoeuib.ttf' if bold else 'C:/Windows/Fonts/segoeui.ttf')):
-            try:
-                return ImageFont.truetype(path, size)
-            except OSError:
-                pass
-        return ImageFont.load_default(size=size)
+    font = load_font
 
     title, heading, regular, small = font(27, True), font(21, True), font(19), font(16)
 

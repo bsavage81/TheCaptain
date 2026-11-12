@@ -84,9 +84,11 @@ class RealmCommands(commands.Cog):
         self.metrics_panels = MetricsController(bot, self.runtime)
         from .daily import DailyController
         self.daily_reports = DailyController(bot, self.runtime)
+        from .leaderboard import LeaderboardController
+        self.leaderboards = LeaderboardController(bot, self.runtime)
         from .stories_sync import StoriesController
         self.stories_sync = StoriesController(bot, self.runtime, self._publish_stories)
-        self.stories_sync.daily_refresh = self.daily_reports.scheduled_refresh
+        self.stories_sync.daily_refresh = self.refresh_activity_views
 
     async def cog_load(self):
         await self.runtime.start()
@@ -97,11 +99,27 @@ class RealmCommands(commands.Cog):
             self.daily_reports.start()
 
     async def cog_unload(self):
+        await self.leaderboards.close()
         await self.daily_reports.close()
         await self.stories_sync.close()
         await self.metrics_panels.close()
         await self.panels.close()
         await self.runtime.close()
+
+    async def refresh_activity_views(self):
+        try:
+            await self.daily_reports.scheduled_refresh()
+        finally:
+            await self.leaderboards.refresh()
+
+    @realm.command(name="leaderboard", description="Season 10 all-time observed playtime leaderboard")
+    async def leaderboard(self, interaction: discord.Interaction):
+        guild = self.bot.settings['Coastal']
+        if interaction.guild_id != guild or getattr(interaction.guild, 'id', None) != guild:
+            await interaction.response.send_message('This leaderboard is available in Coastal Craft only.', ephemeral=True)
+            return
+        await interaction.response.defer(thinking=True)
+        await self.leaderboards.open(interaction)
 
     async def manage_panel(self, interaction, action):
         if not permitted(self.bot.settings, interaction):
