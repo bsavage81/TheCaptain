@@ -44,6 +44,7 @@ class StoriesController:
         self.lock = asyncio.Lock()
         self.failures = 0
         self.retry_at = 0
+        self.daily_refresh = None
 
     def start(self):
         if not self.poll.is_running():
@@ -119,8 +120,16 @@ class StoriesController:
 
     @tasks.loop(seconds=300)
     async def poll(self):
+        if self.daily_refresh is not None:
+            try:
+                await self.daily_refresh()
+            except Exception:
+                log.warning('Shared five-minute daily refresh unavailable')
         await self.refresh()
 
     @poll.before_loop
     async def wait_ready(self):
         await self.bot.wait_until_ready()
+        # Align all three jobs with wall-clock :00, :05, :10, ... boundaries.
+        import time
+        await asyncio.sleep(300 - time.time() % 300)

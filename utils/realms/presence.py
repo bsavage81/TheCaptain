@@ -55,3 +55,15 @@ def prefer_presence(stories, samples, *, max_gap=45):
                       ((start, min(end, lo)), (max(start, hi), end)) if c < d]
         output.extend((xuid, start, end) for start, end in pieces)
     return output
+
+
+def verify_future_intervals(snapshot, view, now):
+    """Cross-check identities against fresh complete presence, never a future endpoint."""
+    from .panel import Sessions
+    future = {item.xuid for item in snapshot.data
+              if item.reason == 'future_timestamp' and item.xuid}
+    fresh = (Sessions.authoritative(view) and
+             0 <= (now-view.activity.observed_at).total_seconds() <= 45)
+    online = {p.xuid for p in view.activity.data.players if p.online is True} if fresh else set()
+    return {xuid: ('online' if xuid in online else 'offline') if fresh else 'unknown'
+            for xuid in future}

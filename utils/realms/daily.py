@@ -129,7 +129,7 @@ class DailyController:
             row, _ = DailyCollection.get_or_create(realm=realm)
             return DailyCollection.update(attempted=now, outcome='pending').where(
                 (DailyCollection.id == row.id) & ((DailyCollection.attempted.is_null()) |
-                (DailyCollection.attempted <= now-timedelta(seconds=3660)))).execute()
+                (DailyCollection.attempted <= now-timedelta(seconds=295)))).execute()
         if not await database(claim):
             return
         try:
@@ -329,18 +329,16 @@ class DailyController:
                 log.warning('Daily report failed at %s (%s)', stage, type(error).__name__)
                 raise DailyUnavailable(f'Daily report unavailable at {stage}. An operator should check the bot logs for this stage.') from None
 
-    @tasks.loop(seconds=15)
-    async def poll(self):
+    async def scheduled_refresh(self):
         now = datetime.now(ZONE)
         if not self.enabled():
             return
         try:
             async with self.lock:
-                await self.runtime.observe(scheduled=True)
                 await self.collect()
-                # Restart catch-up targets only yesterday; repeated local hours share a slot.
-                slot = (now.date(), now.hour)
-                if now.minute >= 5 and self.slot != slot and (self.retry_at is None or utcnow() >= self.retry_at):
+                # One image per five-minute slot; roll over at 00:05, not 00:00.
+                slot = (now.date(), now.hour, now.minute // 5)
+                if (now.hour != 0 or now.minute >= 5) and self.slot != slot and (self.retry_at is None or utcnow() >= self.retry_at):
                     yesterday = now.date()-timedelta(days=1)
                     if self.finalized_day != yesterday:
                         config = self.bot.settings['realm_daily']
@@ -356,6 +354,16 @@ class DailyController:
         except Exception:
             self.retry_at = utcnow()+timedelta(minutes=5)
             log.warning('Daily Realm report unavailable; retry deferred')
+
+    @tasks.loop(seconds=15)
+    async def poll(self):
+        # Only presence sampling has its own fast cadence. Stories owns the shared
+        # five-minute collection/render timer, independent of forwarding enablement.
+        if self.enabled():
+            try:
+                await self.runtime.observe(scheduled=True)
+            except Exception:
+                log.warning('Daily Realm presence observation unavailable')
 
     @poll.before_loop
     async def wait_ready(self):

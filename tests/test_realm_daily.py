@@ -174,10 +174,19 @@ async def test_current_day_rollover_finalizes_previous_message(monkeypatch):
     controller.runtime.observe = AsyncMock()
     controller.collect = AsyncMock()
     controller.publish = AsyncMock(return_value=True)
-    await controller.poll.coro(controller)
+    await controller.scheduled_refresh()
     assert [call.args[0] for call in controller.publish.call_args_list] == [date(2026, 11, 11), date(2026, 11, 12)]
-    await controller.poll.coro(controller)
+    await controller.scheduled_refresh()
     assert controller.publish.await_count == 2
+    class LaterTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 11, 12, 0, 10, tzinfo=ZONE).astimezone(tz)
+    monkeypatch.setattr(module, 'datetime', LaterTime)
+    await controller.scheduled_refresh()
+    assert controller.publish.await_count == 3
+    assert controller.publish.call_args.args[0] == date(2026, 11, 12)
+
 
 
 @pytest.mark.asyncio
@@ -311,3 +320,18 @@ def test_future_rounded_interval_is_revalidated_on_later_import(tmp_path):
         assert row.status == 'observed' and row.reason == ''
         assert row.end == end.replace(tzinfo=None)
         assert RealmActivity.select().count() == 1
+
+
+def test_future_interval_verification_uses_fresh_presence():
+    from datetime import datetime, timezone
+    from utils.realms.presence import verify_future_intervals
+    from utils.realms.runtime import Observation
+    from utils.integrations.realms.models import Snapshot
+    now = datetime(2026,11,12,17,8,tzinfo=timezone.utc)
+    history = Snapshot((NS(xuid='123456',reason='future_timestamp'),
+                        NS(xuid='654321',reason='future_timestamp')),now)
+    activity = Snapshot(NS(players=(NS(xuid='123456',online=True),NS(xuid='654321',online=False))),now)
+    view = Observation(activity=activity,activity_available=True)
+    assert verify_future_intervals(history,view,now) == {'123456':'online','654321':'offline'}
+    assert set(verify_future_intervals(history,view,now+timedelta(seconds=46)).values()) == {'unknown'}
+    assert set(verify_future_intervals(history,Observation(activity=activity),now).values()) == {'unknown'}

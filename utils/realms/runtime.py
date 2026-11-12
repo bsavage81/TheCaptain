@@ -321,7 +321,7 @@ class RealmRuntime:
                         return self._history_snapshot
                     raise HTTPFailure(429, self._history_retry_at - self._clock())
                 # Gate before I/O; callers cannot hammer a failing service.
-                self._history_retry_at = self._clock() + 3600
+                self._history_retry_at = self._clock() + 295
                 try:
                     async with asyncio.timeout(45):
                         snapshot = await self.client.stories()
@@ -334,7 +334,7 @@ class RealmRuntime:
                     raise
                 self._history_failures = 0
                 self._history_snapshot = snapshot
-                self._history_retry_at = self._clock() + 3600
+                self._history_retry_at = self._clock() + 295
                 return snapshot
         finally:
             self._tasks.discard(task)

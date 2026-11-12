@@ -86,6 +86,7 @@ class RealmCommands(commands.Cog):
         self.daily_reports = DailyController(bot, self.runtime)
         from .stories_sync import StoriesController
         self.stories_sync = StoriesController(bot, self.runtime, self._publish_stories)
+        self.stories_sync.daily_refresh = self.daily_reports.scheduled_refresh
 
     async def cog_load(self):
         await self.runtime.start()
@@ -439,6 +440,7 @@ class RealmCommands(commands.Cog):
                         realm, snapshot = await self.runtime.archive_stories()
                     else:
                         realm = self.runtime.config.selected_realm_id
+                        view, _ = await self.runtime.observe(scheduled=True)
                         snapshot = await self.runtime.stories()
                     if not permitted(self.bot.settings, interaction):
                         return
@@ -448,6 +450,21 @@ class RealmCommands(commands.Cog):
                                 f"{max(i.end for i in valid).astimezone(ZONE):%Y-%m-%d %H:%M %Z}." if valid
                                 else ' No usable activity intervals returned; history may be unavailable.')
                     results.append(f"{label}: {counts['created']} added, {counts['existing']} already stored, {counts['quarantined']} quarantined." + coverage)
+                    if not old:
+                        from datetime import datetime, timezone
+                        from .presence import verify_future_intervals, save_sample, PresenceSample
+                        verification = verify_future_intervals(snapshot, view, datetime.now(timezone.utc))
+                        if verification:
+                            if await database(PresenceSample.table_exists):
+                                await database(lambda: save_sample(view, realm))
+                            names = {p.xuid: p.name for p in view.activity.data.players} if view.activity else {}
+                            details = []
+                            for xuid, state in verification.items():
+                                name = safe_name(names[xuid], 40) if names.get(xuid) else 'Unnamed player'
+                                details.append(f"{name}: {state}")
+                            results.append('Future-ended history / fresh player-list check: ' + '; '.join(details) +
+                                '. Online time is taken from saved presence samples only; future end times remain excluded. Unknown means the player-list observation was unavailable, incomplete, or over 45 seconds old.')
+
                 except Exception as error:
                     import logging
                     logging.getLogger(__name__).warning('Manual timeline import unavailable for %s (%s)', label, type(error).__name__)

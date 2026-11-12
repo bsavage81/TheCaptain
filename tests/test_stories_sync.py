@@ -105,3 +105,15 @@ async def test_runtime_target_mismatch_prevents_publication():
     sync.runtime.config = NS(selected_realm_id='99')
     assert not await sync.refresh()
     publish.assert_not_awaited()
+
+
+async def test_shared_five_minute_timer_runs_daily_even_when_forwarding_is_disabled():
+    sync, *_ = controller()
+    sync.daily_refresh = AsyncMock()
+    sync.refresh = AsyncMock(return_value=False)
+    await sync.poll.coro(sync)
+    sync.daily_refresh.assert_awaited_once()
+    sync.refresh.assert_awaited_once()
+    sync.daily_refresh.side_effect = RuntimeError('daily failure')
+    await sync.poll.coro(sync)
+    assert sync.refresh.await_count == 2
