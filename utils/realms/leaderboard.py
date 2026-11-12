@@ -1,6 +1,6 @@
 """Public Season 10 observed leaderboard; stored data only, no independent polling."""
 import asyncio
-from datetime import timezone
+from datetime import date, timedelta, timezone
 import hashlib
 import io
 import json
@@ -10,6 +10,7 @@ import time
 
 import discord
 from .daily import database
+from .daily_models import DailyReport
 from .daily_timeline import load_font, player_color, row_names, ZONE
 from utils.players.activity import verified_player
 from utils.players.activity_models import RealmActivity
@@ -17,6 +18,7 @@ from utils.players.models import Player, utcnow
 
 log = logging.getLogger(__name__)
 PAGE_SIZE = 10
+POST_DAY = date(1970, 1, 1)  # Reserved ledger date for the permanent all-time post.
 
 
 def rankings(rows, now):
@@ -104,6 +106,76 @@ class LeaderboardController:
     def __init__(self,bot,runtime):
         self.bot,self.runtime=bot,runtime
         self.views=set()
+        self.post_lock=asyncio.Lock()
+        self.post_signatures={}
+        self.post_view=None
+
+    def start(self):
+        self.post_view=PermanentLeaderboardView(self)
+        self.bot.add_view(self.post_view)
+
+    async def post(self,channel, *, create=True, data=None):
+        guild=self.bot.settings['Coastal']
+        if getattr(getattr(channel,'guild',None),'id',None)!=guild:
+            raise ValueError('Choose a Coastal Craft text channel.')
+        permissions=channel.permissions_for(channel.guild.me)
+        if not all(getattr(permissions,key,False) for key in ('view_channel','read_message_history','send_messages','attach_files')):
+            raise ValueError('I need View Channel, Read Message History, Send Messages, and Attach Files here.')
+        async with self.post_lock:
+            realm=self.runtime.config.selected_realm_id
+            now=utcnow()
+            def claim():
+                if create:
+                    row,_=DailyReport.get_or_create(guild=guild,channel=channel.id,realm=realm,day=POST_DAY)
+                else:
+                    row=DailyReport.get_or_none(guild=guild,channel=channel.id,realm=realm,day=POST_DAY)
+                if row is None:
+                    return None
+                changed=DailyReport.update(lease=now+timedelta(minutes=3)).where(
+                    (DailyReport.id==row.id)&((DailyReport.lease.is_null())|(DailyReport.lease<now))).execute()
+                return DailyReport.get_by_id(row.id) if changed else None
+            row=await database(claim)
+            if row is None:
+                raise ValueError('Leaderboard publication is already in progress; retry shortly.')
+            try:
+                async with asyncio.timeout(120):
+                    marker='realm-leaderboard-'+hashlib.sha256(f'{guild}:{channel.id}:{realm}'.encode()).hexdigest()[:24]+'.png'
+                    message=None
+                    if row.message:
+                        # Preserve deleted or inaccessible checkpoints rather than posting duplicates.
+                        message=await channel.fetch_message(row.message)
+                        if message.author.id!=self.bot.user.id or not any(a.filename==marker for a in message.attachments):
+                            raise ValueError('Saved leaderboard message identity does not match.')
+                    elif row.pending_since:
+                        if now<row.pending_since+timedelta(minutes=5):
+                            raise ValueError('An earlier send is being reconciled; retry after five minutes.')
+                        async for candidate in channel.history(limit=None,oldest_first=True,
+                                after=row.pending_since.replace(tzinfo=timezone.utc)-timedelta(minutes=1)):
+                            if candidate.author.id==self.bot.user.id and any(a.filename==marker for a in candidate.attachments):
+                                message=candidate
+                                await database(lambda: DailyReport.update(message=message.id).where(DailyReport.id==row.id).execute())
+                                break
+                    data=data if data is not None else await self.load()
+                    signature=LeaderboardView.digest(data)
+                    if message and self.post_signatures.get(row.id)==signature:
+                        return message.jump_url
+                    if self.post_view is None:
+                        self.post_view=PermanentLeaderboardView(self)
+                    png=await asyncio.to_thread(render_page,data,0)
+                    attachment=discord.File(io.BytesIO(png),filename=marker)
+                    try:
+                        if message:
+                            await message.edit(attachments=[attachment],view=self.post_view,allowed_mentions=discord.AllowedMentions.none())
+                        else:
+                            await database(lambda: DailyReport.update(pending_since=utcnow()).where(DailyReport.id==row.id).execute())
+                            message=await channel.send(file=attachment,view=self.post_view,allowed_mentions=discord.AllowedMentions.none())
+                    finally:
+                        attachment.close()
+                    await database(lambda: DailyReport.update(message=message.id,signature=signature,pending_since=None).where(DailyReport.id==row.id).execute())
+                    self.post_signatures[row.id]=signature
+                    return message.jump_url
+            finally:
+                await database(lambda: DailyReport.update(lease=None).where(DailyReport.id==row.id).execute())
 
     async def load(self):
         realm=self.runtime.config.selected_realm_id
@@ -149,13 +221,22 @@ class LeaderboardController:
 
     async def refresh(self):
         active=[v for v in self.views if not v.is_finished() and time.monotonic()<v.deadline]
-        if not active:
-            return
         try:
+            posts=await database(lambda: list(DailyReport.select().where(
+                (DailyReport.guild==self.bot.settings['Coastal']) &
+                (DailyReport.realm==self.runtime.config.selected_realm_id) & (DailyReport.day==POST_DAY))))
+            if not active and not posts:
+                return
             data=await self.load()
         except Exception as error:
             log.warning('Leaderboard refresh unavailable (%s)',type(error).__name__)
             return
+        for row in posts:
+            try:
+                channel=self.bot.get_channel(row.channel) or await self.bot.fetch_channel(row.channel)
+                await self.post(channel,create=False,data=data)
+            except Exception as error:
+                log.warning('Permanent leaderboard refresh unavailable (%s)',type(error).__name__)
         for view in active:
             try:
                 await view.update(data)
@@ -166,8 +247,26 @@ class LeaderboardController:
                 log.warning('Leaderboard page refresh unavailable (%s)',type(error).__name__)
 
     async def close(self):
+        if self.post_view is not None:
+            self.post_view.stop()
         for view in tuple(self.views):
             await view.on_timeout()
+
+
+class PermanentLeaderboardView(discord.ui.View):
+    def __init__(self,controller):
+        super().__init__(timeout=None)
+        self.controller=controller
+
+    @discord.ui.button(label='Browse leaderboard',style=discord.ButtonStyle.secondary,
+                       custom_id='captain:season10:leaderboard:browse')
+    async def browse(self,interaction,button):
+        guild=self.controller.bot.settings['Coastal']
+        if interaction.guild_id!=guild:
+            await interaction.response.send_message('Available in Coastal Craft only.',ephemeral=True)
+            return
+        await interaction.response.defer(ephemeral=True,thinking=True)
+        await self.controller.open(interaction)
 
 
 class LeaderboardView(discord.ui.View):

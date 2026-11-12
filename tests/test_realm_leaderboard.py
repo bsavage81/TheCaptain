@@ -65,3 +65,47 @@ async def test_source_filter_and_pagination_lifecycle(tmp_path):
     view.edit.assert_awaited_once()
     await view.on_timeout()
     assert view not in controller.views and all(item.disabled for item in view.children)
+
+
+@pytest.mark.asyncio
+async def test_permanent_post_recovers_send_survives_restart_and_skips_unchanged(tmp_path):
+    from migrations.realm_daily import migrate as daily_migrate
+    from utils.realms.daily_models import DailyReport
+    backend=SqliteDatabase(tmp_path/'permanent.sqlite')
+    daily_migrate(backend,apply=True,backup_verified=True)
+    messages=[]
+    class Channel:
+        id=2
+        guild=NS(id=1,me=NS())
+        def permissions_for(self,member):
+            return NS(view_channel=True,read_message_history=True,send_messages=True,attach_files=True)
+        async def send(self,**kwargs):
+            message=NS(id=50,author=NS(id=99),attachments=[NS(filename=kwargs['file'].filename)],
+                       edit=AsyncMock(),jump_url='https://discord.com/channels/1/2/50')
+            messages.append(message)
+            raise TimeoutError('accepted but response lost')
+        async def history(self,**kwargs):
+            for message in messages:
+                yield message
+        async def fetch_message(self,identity):
+            return messages[0]
+    bot=NS(settings={'Coastal':1},user=NS(id=99))
+    runtime=NS(config=NS(selected_realm_id='35868436'))
+    channel=Channel()
+    first=LeaderboardController(bot,runtime)
+    first.load=AsyncMock(return_value=([('123456',3600)],{},datetime(2026,11,12)))
+    with pytest.raises(TimeoutError):
+        await first.post(channel)
+    restarted=LeaderboardController(bot,runtime)
+    restarted.load=first.load
+    with pytest.raises(ValueError,match='reconciled'):
+        await restarted.post(channel)
+    with backend.connection_context():
+        DailyReport.update(pending_since=DailyReport.get().pending_since-timedelta(minutes=6)).execute()
+    assert await restarted.post(channel)==messages[0].jump_url
+    assert restarted.post_view.is_persistent()
+    assert await restarted.post(channel)==messages[0].jump_url
+    assert len(messages)==1 and messages[0].edit.await_count==1
+    with backend.connection_context():
+        assert DailyReport.get().message==50
+        assert DailyReport.select().count()==1

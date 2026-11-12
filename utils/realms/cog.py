@@ -92,6 +92,7 @@ class RealmCommands(commands.Cog):
 
     async def cog_load(self):
         await self.runtime.start()
+        self.leaderboards.start()
         if hasattr(self.bot, "wait_until_ready"):
             self.panels.start()
             self.metrics_panels.start()
@@ -120,6 +121,21 @@ class RealmCommands(commands.Cog):
             return
         await interaction.response.defer(thinking=True)
         await self.leaderboards.open(interaction)
+
+    @realm.command(name="leaderboardpost", description="Create or refresh the permanent leaderboard in this channel (OP Team)")
+    async def leaderboardpost(self, interaction: discord.Interaction):
+        if not permitted(self.bot.settings, interaction):
+            await interaction.response.send_message("Realm commands require the Coastal OP Team role in Coastal Craft.", ephemeral=True)
+            return
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        try:
+            url = await self.leaderboards.post(interaction.channel)
+            message = 'Permanent leaderboard ready: ' + url
+        except ValueError as error:
+            message = str(error)
+        except Exception:
+            message = 'Permanent leaderboard is unavailable. The saved delivery checkpoint is preserved; retry later.'
+        await interaction.followup.send(message, ephemeral=True, allowed_mentions=discord.AllowedMentions.none())
 
     async def manage_panel(self, interaction, action):
         if not permitted(self.bot.settings, interaction):
