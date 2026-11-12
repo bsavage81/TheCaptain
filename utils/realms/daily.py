@@ -204,7 +204,7 @@ class DailyController:
             embed.timestamp = success.replace(tzinfo=timezone.utc)
         embed.set_image(url='attachment://realm-daily.png')
         # Include source interval count and merged spans; never publish identifiers.
-        content = ['season10-presence-v5', day.isoformat(), embed.to_dict(), [(x, names.get(x), [(a.isoformat(), b.isoformat()) for a, b in spans])
+        content = ['season10-single-footer-v7', day.isoformat(), embed.to_dict(), [(x, names.get(x), [(a.isoformat(), b.isoformat()) for a, b in spans])
                                      for x, spans in sorted(groups.items())]]
         signature = hashlib.sha256(json.dumps(content, sort_keys=True).encode()).hexdigest()
         return embed, signature, groups, names

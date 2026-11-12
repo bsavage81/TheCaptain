@@ -250,3 +250,12 @@ def test_presence_samples_persist_empty_observations_and_deduplicate(tmp_path):
         assert PresenceSample.get().observed.second == 15
         save_sample(Observation(activity=snapshot, activity_available=False), '3')
         assert PresenceSample.select().count() == 1
+
+
+@pytest.mark.parametrize('seconds, expected', [
+    (0, '0m'), (0.1, '<1m'), (15, '<1m'), (29, '<1m'), (59, '<1m'),
+    (60, '1m'), (89, '1m'), (90, '2m'), (119, '2m'),
+    (3569, '59m'), (3570, '1h 00m'), (3660, '1h 01m')])
+def test_display_duration_keeps_subminute_visits_and_rounds_longer_totals(seconds, expected):
+    from utils.realms.daily_timeline import duration
+    assert duration(seconds) == expected

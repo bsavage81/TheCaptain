@@ -50,8 +50,11 @@ def player_color(xuid):
 
 
 def duration(seconds):
-    minutes = int(seconds // 60)
-    return f'{minutes // 60}h {minutes % 60:02d}m' if minutes else '<1m'
+    # Preserve brief visits without claiming a full minute of observed activity.
+    if 0 < seconds < 60:
+        return '<1m'
+    minutes = int(max(0, seconds) / 60 + 0.5)
+    return f'{minutes // 60}h {minutes % 60:02d}m' if minutes >= 60 else f'{minutes}m'
 
 
 def row_names(xuid, names):
@@ -81,7 +84,7 @@ def render(day, groups, names, collected_at=None):
     lo, hi = window(day)
     elapsed = (hi-lo).total_seconds()
     hours = int(elapsed / 3600)
-    image = Image.new('RGB', (1200, 234 + max(1, len(groups))*70), '#101a25')
+    image = Image.new('RGB', (1200, 212 + max(1, len(groups))*70), '#101a25')
     draw = ImageDraw.Draw(image)
 
     def font(size, bold=False):
@@ -145,12 +148,12 @@ def render(day, groups, names, collected_at=None):
         draw.text((1158, y+19), duration(total), font=heading, fill='#e3edf5', anchor='ra')
     if not groups:
         draw.text((40, top+20), 'No activity intervals observed; coverage may be unavailable.', font=regular, fill='#afc5d7')
-    footer = 'Observed activity · Missing data does not mean inactivity · Coverage is unverified'
+    footer = 'Observed · Unverified'
     if lo <= now < hi:
-        footer = 'In progress · Dark track = not yet elapsed · Missing data does not mean inactivity'
+        footer = 'Live · Dark = future'
     elif hours != 24:
-        footer = f'{hours}-hour DST day · Bars use elapsed time · Coverage is unverified'
-    draw.text((30, image.height-55), footer, font=small, fill='#8fa7bb')
+        footer = f'Observed · {hours}h DST day'
+    draw.text((30, image.height-32), footer, font=small, fill='#8fa7bb')
     if collected_at is not None:
         local = collected_at.astimezone(ZONE)
         stamp = f"{local:%B} {local.day}, {local.year} {local:%I:%M %p}".replace(' 0', ' ')
