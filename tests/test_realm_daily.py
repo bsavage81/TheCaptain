@@ -31,7 +31,7 @@ def test_renderer_smoke():
     day = date(2026, 11, 1)
     lo, hi = window(day)
     for groups in ({}, {'1234567890123456': [(lo, hi)]}):
-        png = render(day, groups, {})
+        png = render(day, groups, {}, lo+timedelta(hours=12))
         image = Image.open(io.BytesIO(png))
         assert image.format == 'PNG' and image.width == 1200
         image.verify()
@@ -48,7 +48,7 @@ async def test_delivery_restarts_and_uncertain_send(tmp_path, monkeypatch):
     class Channel:
         guild = NS(id=1)
         async def send(self, **kwargs):
-            assert 'embed' not in kwargs and 'content' in kwargs
+            assert 'embed' not in kwargs and 'content' not in kwargs
             message = NS(id=100, author=NS(id=99), embeds=[],
                          attachments=[NS(filename=kwargs['file'].filename)], edit=AsyncMock())
             messages.append(message)
@@ -86,6 +86,7 @@ async def test_delivery_restarts_and_uncertain_send(tmp_path, monkeypatch):
     assert len(messages) == 1
     assert messages[0].edit.await_count == 1
     assert messages[0].edit.call_args.kwargs['embeds'] == []
+    assert messages[0].edit.call_args.kwargs['content'] is None
 
 
 def test_display_order_names_colors_and_ticks():
@@ -170,6 +171,7 @@ async def test_current_day_rollover_finalizes_previous_message(monkeypatch):
     bot = NS(settings={'Coastal': 1, 'realms': {'enabled': True}, 'realm_history_enabled': True,
                        'realm_daily': {'enabled': True, 'channel_id': 2}})
     controller = DailyController(bot, NS(config=NS(selected_realm_id='3')))
+    controller.runtime.observe = AsyncMock()
     controller.collect = AsyncMock()
     controller.publish = AsyncMock(return_value=True)
     await controller.poll.coro(controller)
@@ -208,3 +210,43 @@ def test_dual_realm_import_keeps_hourly_intervals_separate_and_deduplicated(tmp_
         assert RealmActivity.select().count() == 2
         assert {r.realm_id for r in RealmActivity.select()} == {'35868436', '11451943'}
         assert all((r.end-r.start).total_seconds() == 3600 for r in RealmActivity.select())
+
+
+def test_presence_overrides_hourly_history_without_bridging_outages():
+    from utils.realms.presence import prefer_presence
+    from datetime import datetime
+    start = datetime(2026, 11, 12, 12)
+    at = lambda seconds: start+timedelta(seconds=seconds)
+    stories = [('a', start, at(3600))]
+    samples = [(at(0), []), (at(15), ['a']), (at(30), ['a']), (at(45), []),
+               (at(180), ['a']), (at(195), [])]
+    rows = prefer_presence(stories, samples)
+    groups, _, seconds = aggregate(rows, date(2026, 11, 12))
+    # Primary 15..45 and 180..195; fallback only outside observed windows.
+    spans = groups['a']
+    assert spans[0] == (at(15).replace(tzinfo=window(date(2026,11,12))[0].tzinfo),
+                        at(3600).replace(tzinfo=window(date(2026,11,12))[0].tzinfo))
+    assert seconds == 3585
+    primary_only = prefer_presence([], samples)
+    assert sum((b-a).total_seconds() for _, a, b in primary_only) == 45
+
+
+def test_presence_samples_persist_empty_observations_and_deduplicate(tmp_path):
+    from datetime import datetime, timezone
+    from utils.realms.presence import PresenceSample, save_sample
+    from utils.database.__database import db
+    from utils.realms.runtime import Observation
+    from utils.integrations.realms.models import Snapshot
+    backend = SqliteDatabase(tmp_path / 'presence.sqlite')
+    db.initialize(backend)
+    with backend.connection_context():
+        backend.create_tables([PresenceSample])
+        snapshot = Snapshot(NS(players=()), datetime(2026,11,12,12,0,15,tzinfo=timezone.utc))
+        view = Observation(activity=snapshot, activity_available=True)
+        save_sample(view, '3')
+        save_sample(view, '3')
+        assert PresenceSample.select().count() == 1
+        assert PresenceSample.get().online == '[]'
+        assert PresenceSample.get().observed.second == 15
+        save_sample(Observation(activity=snapshot, activity_available=False), '3')
+        assert PresenceSample.select().count() == 1

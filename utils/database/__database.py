@@ -68,7 +68,8 @@ def initialize_database(settings, backend=None):
         # Daily report checkpoints are additive startup tables, like other bot state.
         # Import lazily because these models inherit BaseModel from this module.
         from utils.realms.daily_models import DailyReport, DailyCollection
-        missing_daily = [model for model in (DailyReport, DailyCollection)
+        from utils.realms.presence import PresenceSample
+        missing_daily = [model for model in (DailyReport, DailyCollection, PresenceSample)
                          if not model.table_exists()]
         if missing_daily:
             if isinstance(backend, MySQLDatabase):

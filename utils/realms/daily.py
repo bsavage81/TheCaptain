@@ -13,6 +13,7 @@ from utils.players.activity import ingest, verified_player
 from utils.players.activity_models import RealmActivity
 from utils.players.models import Player, utcnow
 from .daily_models import DailyCollection, DailyReport
+from .presence import PresenceSample, save_sample, prefer_presence
 from .daily_timeline import ZONE, aggregate, window, render
 
 log = logging.getLogger(__name__)
@@ -43,14 +44,6 @@ async def database(call):
         raise
 
 
-def report_caption(embed):
-    fields = {field.name: field.value for field in embed.fields}
-    return (f"{fields.get('Unique observed players', '0')} observed players · "
-            f"{fields.get('Combined observed activity', '0h 00m')} combined activity · "
-            f"{fields.get('Observed activity intervals', '0')} observed intervals\n"
-            + fields.get('Collection status', 'Coverage is unverified.'))
-
-
 def matches_report(message, marker):
     # Existing embed reports remain recoverable during the switch to attachments.
     filename = marker.replace(':', '-') + '.png'
@@ -65,6 +58,11 @@ class DailyController:
         self.slot = None
         self.finalized_day = None
         self.retry_at = None
+        self.runtime.activity_recorder = self.record_presence
+
+    async def record_presence(self, view):
+        if self.enabled():
+            await database(lambda: save_sample(view, self.runtime.config.selected_realm_id))
 
     def enabled(self):
         return (self.bot.settings.get('realm_daily', {}).get('enabled') is True
@@ -154,6 +152,13 @@ class DailyController:
             rows = list(RealmActivity.select(RealmActivity.xuid, RealmActivity.start, RealmActivity.end).where(
                 (RealmActivity.realm_id == realm) & (RealmActivity.status == 'observed') &
                 (RealmActivity.start < hi) & (RealmActivity.end > lo)).tuples())
+            samples = []
+            if PresenceSample.table_exists():
+                samples = [(sample.observed, json.loads(sample.online)) for sample in
+                           PresenceSample.select().where((PresenceSample.realm == realm) &
+                           (PresenceSample.observed >= lo-timedelta(seconds=45)) &
+                           (PresenceSample.observed <= hi+timedelta(seconds=45))).order_by(PresenceSample.observed)]
+            rows = prefer_presence(rows, samples)
             names, linked = {}, {}
             for xuid in {r[0] for r in rows if r[0]}:
                 player_id = verified_player(xuid)
@@ -164,7 +169,9 @@ class DailyController:
                     if player.discord_id:
                         linked[xuid] = (player.discord_id, player.discord_name)
             state = DailyCollection.get_or_none(DailyCollection.realm == realm)
-            return rows, names, linked, (state.succeeded, state.outcome) if state else (None, 'unavailable')
+            success = max([v for v in [state.succeeded if state else None,
+                                       samples[-1][0] if samples else None] if v], default=None)
+            return rows, names, linked, (success, state.outcome if state else 'unavailable')
         rows, names, linked, (success, outcome) = await database(read)
         groups, count, seconds = aggregate(rows, day)
         if self.runtime.names is not None:
@@ -193,9 +200,11 @@ class DailyController:
         embed.add_field(name='Combined observed activity', value=f'{int(seconds//3600)}h {int(seconds%3600//60)}m')
         embed.add_field(name='Observed activity intervals', value=str(count))
         embed.add_field(name='Collection status', value=status, inline=False)
+        if success:
+            embed.timestamp = success.replace(tzinfo=timezone.utc)
         embed.set_image(url='attachment://realm-daily.png')
         # Include source interval count and merged spans; never publish identifiers.
-        content = ['season10-attachment-v3', day.isoformat(), embed.to_dict(), [(x, names.get(x), [(a.isoformat(), b.isoformat()) for a, b in spans])
+        content = ['season10-presence-v5', day.isoformat(), embed.to_dict(), [(x, names.get(x), [(a.isoformat(), b.isoformat()) for a, b in spans])
                                      for x, spans in sorted(groups.items())]]
         signature = hashlib.sha256(json.dumps(content, sort_keys=True).encode()).hexdigest()
         return embed, signature, groups, names
@@ -238,17 +247,16 @@ class DailyController:
                 if message:
                     await database(lambda: DailyReport.update(message=message.id).where(DailyReport.id == row.id).execute())
             embed, signature, groups, names = await self.report(day)
-            caption = report_caption(embed)
             if message and row.signature == signature:
                 return True
-            png = await asyncio.to_thread(render, day, groups, names)
+            png = await asyncio.to_thread(render, day, groups, names, embed.timestamp)
             attachment = discord.File(io.BytesIO(png), filename=marker.replace(':', '-') + '.png')
             try:
                 if message:
-                    await message.edit(content=caption, embeds=[], attachments=[attachment], allowed_mentions=discord.AllowedMentions.none())
+                    await message.edit(content=None, embeds=[], attachments=[attachment], allowed_mentions=discord.AllowedMentions.none())
                 else:
                     await database(lambda: DailyReport.update(pending_since=utcnow()).where(DailyReport.id == row.id).execute())
-                    message = await channel.send(content=caption, file=attachment, allowed_mentions=discord.AllowedMentions.none())
+                    message = await channel.send(file=attachment, allowed_mentions=discord.AllowedMentions.none())
             finally:
                 attachment.close()
             await database(lambda: DailyReport.update(message=message.id, signature=signature, pending_since=None).where(
@@ -280,13 +288,16 @@ class DailyController:
                     if not await database(lambda: RealmActivity.select().where(
                             (RealmActivity.realm_id == self.runtime.config.selected_realm_id) &
                             (RealmActivity.status == 'observed') & (RealmActivity.start < hi) &
-                            (RealmActivity.end > lo)).exists()):
+                            (RealmActivity.end > lo)).exists() or (PresenceSample.table_exists() and
+                            PresenceSample.select().where((PresenceSample.realm == self.runtime.config.selected_realm_id) &
+                            (PresenceSample.observed >= lo) & (PresenceSample.observed < hi) &
+                            (PresenceSample.online != '[]')).exists())):
                         raise DailyUnavailable('No stored activity observations overlap that date for the selected Realm. Missing history does not establish inactivity.')
                 if preview:
                     stage = 'report data'
                     embed, _, groups, names = await self.report(day)
                     stage = 'PNG rendering'
-                    png = await asyncio.to_thread(render, day, groups, names)
+                    png = await asyncio.to_thread(render, day, groups, names, embed.timestamp)
                     return embed, png
                 stage = 'Discord delivery'
                 return await self.publish(day)
@@ -301,13 +312,14 @@ class DailyController:
                 log.warning('Daily report failed at %s (%s)', stage, type(error).__name__)
                 raise DailyUnavailable(f'Daily report unavailable at {stage}. An operator should check the bot logs for this stage.') from None
 
-    @tasks.loop(seconds=60)
+    @tasks.loop(seconds=15)
     async def poll(self):
         now = datetime.now(ZONE)
         if not self.enabled():
             return
         try:
             async with self.lock:
+                await self.runtime.observe(scheduled=True)
                 await self.collect()
                 # Restart catch-up targets only yesterday; repeated local hours share a slot.
                 slot = (now.date(), now.hour)

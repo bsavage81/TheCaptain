@@ -68,6 +68,7 @@ class RealmRuntime:
         self._last_attempt = None
         self._retry_at = 0
         self.view = Observation()
+        self.activity_recorder = None
         self.client = None
         self.store = None
         self.names = None
@@ -165,6 +166,11 @@ class RealmRuntime:
                 if activity_ok and self.names is not None:
                     activity = await self.names.enrich(activity)
                 self.view = Observation(realm, activity, realm_ok, activity_ok)
+                if activity_ok and self.activity_recorder is not None:
+                    try:
+                        await self.activity_recorder(self.view)
+                    except Exception:
+                        log.warning('Realm presence sample persistence unavailable')
                 return self.view, math.ceil(max(0, self._retry_at - self._clock()))
         finally:
             self._tasks.discard(task)

@@ -76,12 +76,12 @@ def axis_ticks(day):
             for hour, label in ((0, '12 AM'), (6, '6 AM'), (12, '12 PM'), (18, '6 PM'))] + [(hi, '12 AM')]
 
 
-def render(day, groups, names):
+def render(day, groups, names, collected_at=None):
     from PIL import Image, ImageDraw, ImageFont
     lo, hi = window(day)
     elapsed = (hi-lo).total_seconds()
     hours = int(elapsed / 3600)
-    image = Image.new('RGB', (1200, 212 + max(1, len(groups))*70), '#101a25')
+    image = Image.new('RGB', (1200, 234 + max(1, len(groups))*70), '#101a25')
     draw = ImageDraw.Draw(image)
 
     def font(size, bold=False):
@@ -150,7 +150,14 @@ def render(day, groups, names):
         footer = 'In progress · Dark track = not yet elapsed · Missing data does not mean inactivity'
     elif hours != 24:
         footer = f'{hours}-hour DST day · Bars use elapsed time · Coverage is unverified'
-    draw.text((30, image.height-34), footer, font=small, fill='#8fa7bb')
+    draw.text((30, image.height-55), footer, font=small, fill='#8fa7bb')
+    if collected_at is not None:
+        local = collected_at.astimezone(ZONE)
+        stamp = f"{local:%B} {local.day}, {local.year} {local:%I:%M %p}".replace(' 0', ' ')
+        collection = 'Last successful collection: ' + stamp
+    else:
+        collection = 'Last successful collection: unavailable'
+    draw.text((1170, image.height-32), collection, font=small, fill='#8fa7bb', anchor='ra')
     output = io.BytesIO()
     image.save(output, format='PNG')
     return output.getvalue()

@@ -478,7 +478,7 @@ class RealmCommands(commands.Cog):
             await interaction.response.send_message("Realm commands require the Coastal OP Team role in Coastal Craft.", ephemeral=True)
             return
         await interaction.response.defer(ephemeral=True, thinking=True)
-        from .daily import DailyUnavailable, report_caption
+        from .daily import DailyUnavailable
         try:
             result = await self.daily_reports.refresh(preview=preview, day=day)
         except DailyUnavailable as error:
@@ -489,7 +489,7 @@ class RealmCommands(commands.Cog):
             if permitted(self.bot.settings, interaction):
                 attachment = discord.File(io.BytesIO(png), filename="realm-daily.png")
                 try:
-                    await interaction.followup.send(content=report_caption(embed), file=attachment, ephemeral=True,
+                    await interaction.followup.send(file=attachment, ephemeral=True,
                                                     allowed_mentions=discord.AllowedMentions.none())
                 finally:
                     attachment.close()
