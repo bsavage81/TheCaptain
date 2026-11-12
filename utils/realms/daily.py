@@ -85,8 +85,14 @@ class DailyController:
     async def configure(self, enabled, channel=None):
         async with self.lock:
             current = self.bot.settings.get('realm_daily')
-            if not enabled and current is None:
+            if enabled is False and current is None:
                 return
+            if enabled is None:
+                enabled = current.get('enabled', False) if current else False
+            if enabled and channel is None:
+                if not current:
+                    raise ValueError('Choose a report channel with /realm daily channel first.')
+                channel = self.bot.get_channel(current['channel_id']) or await self.bot.fetch_channel(current['channel_id'])
             if enabled:
                 if not self.bot.settings.get('realms', {}).get('enabled'):
                     raise ValueError('Enable the Realms integration before daily reports.')
@@ -96,7 +102,14 @@ class DailyController:
                 if not all(getattr(permissions, name, False) for name in
                            ('view_channel', 'read_message_history', 'send_messages', 'attach_files')):
                     raise ValueError('I need View Channel, Read Message History, Send Messages, and Attach Files in that channel.')
-            value = dict(enabled=enabled, channel_id=channel.id if enabled else current['channel_id'])
+            if channel is not None and not enabled:
+                if channel.guild.id != self.bot.settings['Coastal']:
+                    raise ValueError('Choose a text channel in Coastal Craft.')
+                permissions = channel.permissions_for(channel.guild.me)
+                if not all(getattr(permissions, name, False) for name in
+                           ('view_channel', 'read_message_history', 'send_messages', 'attach_files')):
+                    raise ValueError('I need View Channel, Read Message History, Send Messages, and Attach Files in that channel.')
+            value = dict(enabled=enabled, channel_id=channel.id if channel is not None else current['channel_id'])
             validate_daily(value)
             def save():
                 from utils.configuration import validate_document
@@ -284,7 +297,7 @@ class DailyController:
     async def refresh(self, *, preview=False, day=None):
         async with self.lock:
             if not preview and not self.enabled():
-                raise DailyUnavailable('Daily reports are disabled. Use /realm daily enable and choose a channel first.')
+                raise DailyUnavailable('Daily reports are disabled. Set /realm daily channel, then use /realm daily enable.')
             stage = 'database'
             try:
                 def check_schema():

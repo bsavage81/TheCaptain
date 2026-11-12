@@ -383,10 +383,14 @@ class RealmCommands(commands.Cog):
         else:
             await interaction.followup.send(message, ephemeral=True, allowed_mentions=discord.AllowedMentions.none())
 
-    @daily_group.command(name="enable", description="Enable daily reports in a chosen public channel")
+    @daily_group.command(name="enable", description="Enable daily reports in the saved report channel")
+    async def daily_enable(self, interaction: discord.Interaction):
+        await self.configure_daily(interaction, True)
+
+    @daily_group.command(name="channel", description="Set the public channel for daily reports")
     @app_commands.describe(channel="Public Coastal Craft text channel for daily reports")
-    async def daily_enable(self, interaction: discord.Interaction, channel: discord.TextChannel):
-        await self.configure_daily(interaction, True, channel)
+    async def daily_channel(self, interaction: discord.Interaction, channel: discord.TextChannel):
+        await self.configure_daily(interaction, None, channel)
 
     @daily_group.command(name="disable", description="Stop daily collection and automatic report updates")
     async def daily_disable(self, interaction: discord.Interaction):
@@ -402,8 +406,13 @@ class RealmCommands(commands.Cog):
         except ValueError as error:
             await interaction.followup.send(str(error), ephemeral=True, allowed_mentions=discord.AllowedMentions.none())
             return
-        message = (f"Daily Realm reports enabled in {channel.mention}. Activity history collection is enabled; reports use America/Chicago time."
-                   if enabled else "Daily Realm reports disabled. Existing messages are preserved.")
+        if enabled is None:
+            message = f"Daily report channel set to {channel.mention}. The enabled/disabled setting is unchanged."
+        elif enabled:
+            channel_id = self.bot.settings['realm_daily']['channel_id']
+            message = f"Daily Realm reports enabled in <#{channel_id}>. Activity history collection is enabled; reports use America/Chicago time."
+        else:
+            message = "Daily Realm reports disabled. Existing messages are preserved."
         await interaction.followup.send(message, ephemeral=True, allowed_mentions=discord.AllowedMentions.none())
 
     @daily_group.command(name="preview", description="Privately preview today's observed Realm timeline")
