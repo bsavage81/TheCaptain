@@ -9,13 +9,17 @@ import logging
 import discord
 from discord.ext import tasks
 from utils.database.__database import db
-from utils.players.activity import ingest
+from utils.players.activity import ingest, verified_player
 from utils.players.activity_models import RealmActivity
 from utils.players.models import Player, utcnow
 from .daily_models import DailyCollection, DailyReport
 from .daily_timeline import ZONE, aggregate, window, render
 
 log = logging.getLogger(__name__)
+
+
+class DailyUnavailable(RuntimeError):
+    """Safe actionable staff error."""
 
 
 def validate_daily(value):
@@ -134,16 +138,18 @@ class DailyController:
             rows = list(RealmActivity.select(RealmActivity.xuid, RealmActivity.start, RealmActivity.end).where(
                 (RealmActivity.realm_id == realm) & (RealmActivity.status == 'observed') &
                 (RealmActivity.start < hi) & (RealmActivity.end > lo)).tuples())
-            names = {p.xuid: p.gamertag for p in Player.select().where(
-                Player.xuid.in_({r[0] for r in rows})) if p.gamertag}
-            # Verified links populated by existing ingestion also carry display names.
-            for row in RealmActivity.select(RealmActivity, Player).join(Player).where(
-                    (RealmActivity.realm_id == realm) & (RealmActivity.start < hi) & (RealmActivity.end > lo)):
-                if row.xuid and row.player.gamertag:
-                    names.setdefault(row.xuid, row.player.gamertag)
+            names, linked = {}, {}
+            for xuid in {r[0] for r in rows if r[0]}:
+                player_id = verified_player(xuid)
+                player = Player.get_or_none(Player.id == player_id) if player_id else None
+                if player:
+                    if player.gamertag:
+                        names[xuid] = player.gamertag
+                    if player.discord_id:
+                        linked[xuid] = (player.discord_id, player.discord_name)
             state = DailyCollection.get_or_none(DailyCollection.realm == realm)
-            return rows, names, (state.succeeded, state.outcome) if state else (None, 'unavailable')
-        rows, names, (success, outcome) = await database(read)
+            return rows, names, linked, (state.succeeded, state.outcome) if state else (None, 'unavailable')
+        rows, names, linked, (success, outcome) = await database(read)
         groups, count, seconds = aggregate(rows, day)
         if self.runtime.names is not None:
             try:
@@ -151,18 +157,28 @@ class DailyController:
                     names.update(await self.runtime.names.resolve(list(groups)[start:start+100]))
             except Exception:
                 pass
+        guild = self.bot.get_guild(self.bot.settings['Coastal'])
+        display = {}
+        for xuid in groups:
+            discord_name = None
+            if xuid in linked:
+                discord_id, stored_name = linked[xuid]
+                member = guild.get_member(discord_id) if guild else None
+                discord_name = member.display_name if member else stored_name
+            display[xuid] = {'gamertag': names.get(xuid), 'discord': discord_name}
+        names = display
         status = ('Last successful collection: ' + f'<t:{int(success.replace(tzinfo=timezone.utc).timestamp())}:f>'
                   if success else 'No successful automatic collection recorded.')
         status += '\nLatest collection: ' + outcome + '. Coverage is partial and unverified.'
-        embed = discord.Embed(title=f'Coastal Craft — Observed Realm Activity — {day.isoformat()}',
+        embed = discord.Embed(title='Daily Realm Activity Summary',
                               description='Missing data does not establish inactivity.', color=0x78B84A)
         embed.add_field(name='Unique observed players', value=str(len(groups)))
-        embed.add_field(name='Combined observed playtime', value=f'{int(seconds//3600)}h {int(seconds%3600//60)}m')
+        embed.add_field(name='Combined observed activity', value=f'{int(seconds//3600)}h {int(seconds%3600//60)}m')
         embed.add_field(name='Observed activity intervals', value=str(count))
         embed.add_field(name='Collection status', value=status, inline=False)
         embed.set_image(url='attachment://realm-daily.png')
         # Include source interval count and merged spans; never publish identifiers.
-        content = [embed.to_dict(), [(x, names.get(x), [(a.isoformat(), b.isoformat()) for a, b in spans])
+        content = ['season10-display-v2', day.isoformat(), embed.to_dict(), [(x, names.get(x), [(a.isoformat(), b.isoformat()) for a, b in spans])
                                      for x, spans in sorted(groups.items())]]
         signature = hashlib.sha256(json.dumps(content, sort_keys=True).encode()).hexdigest()
         return embed, signature, groups, names
@@ -226,15 +242,37 @@ class DailyController:
 
     async def refresh(self, *, preview=False):
         async with self.lock:
-            if not self.enabled():
-                raise ValueError('Enable realm_daily, Realms, and realm_history_enabled first')
-            await self.collect()
-            day = datetime.now(ZONE).date()-timedelta(days=1)
-            if preview:
-                embed, _, groups, names = await self.report(day)
-                png = await asyncio.to_thread(render, day, groups, names)
-                return embed, png
-            return await self.publish(day)
+            if not preview and not self.enabled():
+                raise DailyUnavailable('Daily reports are disabled. Use /realm daily enable and choose a channel first.')
+            stage = 'database'
+            try:
+                def check_schema():
+                    return all(model.table_exists() for model in (RealmActivity, DailyCollection, DailyReport))
+                if not await database(check_schema):
+                    raise DailyUnavailable('Daily report tables are missing. An operator must run the explicit Realm activity and daily report migrations; preview does not create tables.')
+                # Preview needs stored observations, not enabled reporting or working auth.
+                if not preview:
+                    stage = 'collection'
+                    await self.collect()
+                day = datetime.now(ZONE).date()-timedelta(days=1)
+                if preview:
+                    stage = 'report data'
+                    embed, _, groups, names = await self.report(day)
+                    stage = 'PNG rendering'
+                    png = await asyncio.to_thread(render, day, groups, names)
+                    return embed, png
+                stage = 'Discord delivery'
+                return await self.publish(day)
+            except DailyUnavailable:
+                raise
+            except ModuleNotFoundError as error:
+                log.warning('Daily report failed at %s (%s)', stage, type(error).__name__)
+                if error.name == 'PIL':
+                    raise DailyUnavailable('Timeline rendering needs Pillow. An operator must install the pinned requirements and restart the bot.') from None
+                raise DailyUnavailable('A daily report Python dependency is missing. An operator must check the installed requirements.') from None
+            except Exception as error:
+                log.warning('Daily report failed at %s (%s)', stage, type(error).__name__)
+                raise DailyUnavailable(f'Daily report unavailable at {stage}. An operator should check the bot logs for this stage.') from None
 
     @tasks.loop(seconds=60)
     async def poll(self):

@@ -42,36 +42,109 @@ def fallback(xuid):
     return 'Player ' + hashlib.sha256(xuid.encode()).hexdigest()[:8]
 
 
+PALETTE = ('#64cbe9', '#8cd38d', '#f6b46d', '#c09cf5', '#f28fa0', '#68d6bf', '#e6cf78', '#80aefa')
+
+
+def player_color(xuid):
+    return PALETTE[int.from_bytes(hashlib.sha256(xuid.encode()).digest()[:4], 'big') % len(PALETTE)]
+
+
+def duration(seconds):
+    minutes = int(seconds // 60)
+    return f'{minutes // 60}h {minutes % 60:02d}m' if minutes else '<1m'
+
+
+def row_names(xuid, names):
+    value = names.get(xuid, {})
+    if isinstance(value, str):
+        value = {'gamertag': value}
+    gamertag = value.get('gamertag') or fallback(xuid)
+    discord = value.get('discord')
+    if discord and discord.casefold() != gamertag.casefold():
+        return discord, gamertag
+    return gamertag, None
+
+
+def ordered_players(groups):
+    return sorted(groups, key=lambda x: (-sum((b-a).total_seconds() for a, b in groups[x]), x))
+
+
+def axis_ticks(day):
+    lo, hi = window(day)
+    # Local wall-clock major ticks retain proportional UTC spacing across DST.
+    return [(datetime.combine(day, time(hour), ZONE).astimezone(UTC), label)
+            for hour, label in ((0, '12 AM'), (6, '6 AM'), (12, '12 PM'), (18, '6 PM'))] + [(hi, '12 AM')]
+
+
 def render(day, groups, names):
     from PIL import Image, ImageDraw, ImageFont
     lo, hi = window(day)
-    hours = int((hi-lo).total_seconds() / 3600)
-    image = Image.new('RGB', (1280, 190 + max(1, len(groups))*34), '#171e20')
+    elapsed = (hi-lo).total_seconds()
+    hours = int(elapsed / 3600)
+    image = Image.new('RGB', (1200, 212 + max(1, len(groups))*70), '#101a25')
     draw = ImageDraw.Draw(image)
-    font = ImageFont.load_default(size=16)
-    title = ImageFont.load_default(size=25)
-    draw.rectangle((0, 0, 1279, 7), fill='#6caf43')
-    draw.text((24, 23), f'Coastal Craft | {day:%B %d, %Y}', font=title, fill='#e5f0df')
-    draw.text((24, 62), 'Observed Realm Activity | America/Chicago', font=font, fill='#9acc83')
-    draw.text((24, 88), 'Missing observations do not mean inactivity. Coverage is unverified.', font=font, fill='#b5bfc2')
-    left, width, top = 260, 990, 148
-    for h in range(hours+1):
-        x = left + width*h/hours
-        local = (lo+timedelta(hours=h)).astimezone(ZONE)
-        draw.line((x, top-4, x, image.height-30), fill='#354146')
-        if h % 2 == 0 or h == hours:
-            draw.text((x-12, 120), local.strftime('%H'), font=font, fill='#c4ced0')
-    colors = ('#77bc50', '#55b6d9', '#e4b65b', '#b38ce0')
-    for i, xuid in enumerate(sorted(groups, key=lambda x: (names.get(x, fallback(x)).casefold(), x))):
-        y = top+i*34
-        draw.text((24, y+3), names.get(xuid, fallback(xuid))[:25], font=font, fill='#e5ecee')
+
+    def font(size, bold=False):
+        # Use host fonts when present; Pillow's bundled font remains portable.
+        for path in (('DejaVuSans-Bold.ttf' if bold else 'DejaVuSans.ttf'),
+                     ('C:/Windows/Fonts/segoeuib.ttf' if bold else 'C:/Windows/Fonts/segoeui.ttf')):
+            try:
+                return ImageFont.truetype(path, size)
+            except OSError:
+                pass
+        return ImageFont.load_default(size=size)
+
+    title, heading, regular, small = font(27, True), font(21, True), font(19), font(16)
+
+    def fitted(text, face, width):
+        text = ' '.join(str(text).split())
+        if draw.textlength(text, font=face) <= width:
+            return text
+        while text and draw.textlength(text + '…', font=face) > width:
+            text = text[:-1]
+        return text + '…'
+
+    draw.rectangle((12, 12, 1187, image.height-13), outline='#304658', width=2)
+    draw.rectangle((12, 12, 20, 20), fill='#f6b46d')
+    draw.rectangle((1180, 12, 1187, 20), fill='#f6b46d')
+    draw.text((30, 25), 'Coastal Craft · Season 10', font=title, fill='#e3edf5')
+    draw.text((30, 61), 'The Mighty Mesa Reborn', font=regular, fill='#f6b46d')
+    draw.text((30, 96), 'Observed Realm Activity', font=heading, fill='#e3edf5')
+    draw.text((1170, 32), f'{day:%B %d, %Y}', font=heading, fill='#e3edf5', anchor='ra')
+    draw.text((1170, 68), f'America/Chicago · {hours}-hour day', font=small, fill='#afc5d7', anchor='ra')
+    left, width, top = 300, 730, 164
+    ticks = axis_ticks(day)
+    draw.text((40, 135), 'PLAYER', font=small, fill='#8fa7bb')
+    draw.text((1160, 135), 'TOTAL', font=small, fill='#8fa7bb', anchor='ra')
+    for stamp, label in ticks:
+        x = left + width*(stamp-lo).total_seconds()/elapsed
+        draw.text((x, 135), label, font=small, fill='#afc5d7', anchor='ma')
+    for i, xuid in enumerate(ordered_players(groups)):
+        y = top+i*70
+        # Separate outlined rows distinguish neighboring players even when colors collide.
+        draw.rectangle((30, y, 1169, y+63), fill='#1b2b39' if i % 2 == 0 else '#152331', outline='#2b4052')
+        color = player_color(xuid)
+        draw.rectangle((40, y+12, 45, y+51), fill=color)
+        first, second = row_names(xuid, names)
+        draw.text((58, y+(8 if second else 20)), fitted(first, heading, 220), font=heading, fill='#e3edf5')
+        if second:
+            draw.text((58, y+34), fitted(second, regular, 220), font=regular, fill='#9eb6ca')
+        draw.rectangle((left, y+23, left+width, y+42), fill='#283949')
+        for stamp, _ in ticks:
+            x = left+width*(stamp-lo).total_seconds()/elapsed
+            draw.line((x, y+5, x, y+58), fill='#354a5b')
         for a, b in groups[xuid]:
-            x1 = left+width*(a-lo).total_seconds()/(hi-lo).total_seconds()
-            x2 = left+width*(b-lo).total_seconds()/(hi-lo).total_seconds()
-            draw.rectangle((x1, y+5, max(x1+1, x2), y+23), fill=colors[i % 4])
+            x1 = left+width*(a-lo).total_seconds()/elapsed
+            x2 = left+width*(b-lo).total_seconds()/elapsed
+            draw.rectangle((x1, y+23, min(left+width, max(x1+1, x2)), y+42), fill=color)
+        total = sum((b-a).total_seconds() for a, b in groups[xuid])
+        draw.text((1158, y+19), duration(total), font=heading, fill='#e3edf5', anchor='ra')
     if not groups:
-        draw.text((left+15, top+5), 'No activity intervals observed; coverage may be unavailable.', font=font, fill='#c4ced0')
-    draw.text((24, image.height-24), f'{hours}-hour reporting window; repeated DST hours are separate columns.', font=font, fill='#9caeb3')
+        draw.text((40, top+20), 'No activity intervals observed; coverage may be unavailable.', font=regular, fill='#afc5d7')
+    footer = 'Observed activity · Missing data does not mean inactivity · Coverage is unverified'
+    if hours != 24:
+        footer = f'{hours}-hour DST day · Bars use elapsed time · Coverage is unverified'
+    draw.text((30, image.height-34), footer, font=small, fill='#8fa7bb')
     output = io.BytesIO()
     image.save(output, format='PNG')
     return output.getvalue()

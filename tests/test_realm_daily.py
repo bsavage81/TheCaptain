@@ -33,7 +33,7 @@ def test_renderer_smoke():
     for groups in ({}, {'1234567890123456': [(lo, hi)]}):
         png = render(day, groups, {})
         image = Image.open(io.BytesIO(png))
-        assert image.format == 'PNG' and image.width == 1280
+        assert image.format == 'PNG' and image.width == 1200
         image.verify()
     assert '1234567890123456' not in fallback('1234567890123456')
 
@@ -83,3 +83,40 @@ async def test_delivery_restarts_and_uncertain_send(tmp_path, monkeypatch):
         assert DailyReport.select().count() == 1
     assert len(messages) == 1
     assert messages[0].edit.await_count == 1
+
+
+def test_display_order_names_colors_and_ticks():
+    from utils.realms.daily_timeline import player_color, ordered_players, row_names, axis_ticks
+    day = date(2026, 11, 5)
+    lo, _ = window(day)
+    groups = {'b': [(lo, lo+timedelta(hours=1))], 'a': [(lo, lo+timedelta(hours=3))]}
+    assert ordered_players(groups) == ['a', 'b']
+    assert row_names('a', {'a': {'discord': 'Savage', 'gamertag': 'TheCaptain4322'}}) == ('Savage', 'TheCaptain4322')
+    assert row_names('a', {'a': {'discord': 'CAPTAIN', 'gamertag': 'Captain'}}) == ('Captain', None)
+    assert row_names('a', {'a': {'gamertag': 'Captain'}}) == ('Captain', None)
+    assert player_color('123456') == '#80aefa'
+    for d, first_gap in [(date(2026, 3, 8), 5), (date(2026, 11, 1), 7), (day, 6)]:
+        ticks = axis_ticks(d)
+        assert (ticks[1][0]-ticks[0][0]).total_seconds() == first_gap*3600
+        assert ticks[0][0] == window(d)[0] and ticks[-1][0] == window(d)[1]
+
+
+@pytest.mark.asyncio
+async def test_preview_disabled_reads_stored_data(tmp_path):
+    from utils.realms.daily import DailyUnavailable
+    backend = SqliteDatabase(tmp_path / 'preview.sqlite')
+    activity_migrate(backend, apply=True, backup_verified=True)
+    migrate(backend, apply=True, backup_verified=True)
+    bot = NS(settings={'Coastal': 1}, get_guild=lambda _: None)
+    runtime = NS(config=NS(selected_realm_id='3'), names=None)
+    controller = DailyController(bot, runtime)
+    controller.collect = AsyncMock(side_effect=AssertionError('Preview must not collect'))
+    embed, png = await controller.refresh(preview=True)
+    assert png.startswith(b'\x89PNG') and embed.fields[0].value == '0'
+    controller.collect.assert_not_awaited()
+    with pytest.raises(DailyUnavailable, match='disabled'):
+        await controller.refresh()
+    with backend.connection_context():
+        DailyReport.drop_table()
+    with pytest.raises(DailyUnavailable, match='tables are missing'):
+        await controller.refresh(preview=True)

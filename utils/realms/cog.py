@@ -418,8 +418,14 @@ class RealmCommands(commands.Cog):
             await interaction.response.send_message("Realm commands require the Coastal OP Team role in Coastal Craft.", ephemeral=True)
             return
         await interaction.response.defer(ephemeral=True, thinking=True)
+        from .daily import DailyUnavailable
+        try:
+            result = await self.daily_reports.refresh(preview=preview)
+        except DailyUnavailable as error:
+            await interaction.followup.send(str(error), ephemeral=True, allowed_mentions=discord.AllowedMentions.none())
+            return
         if preview:
-            embed, png = await self.daily_reports.refresh(preview=True)
+            embed, png = result
             if permitted(self.bot.settings, interaction):
                 attachment = discord.File(io.BytesIO(png), filename="realm-daily.png")
                 try:
@@ -428,7 +434,7 @@ class RealmCommands(commands.Cog):
                 finally:
                     attachment.close()
         elif permitted(self.bot.settings, interaction):
-            ok = await self.daily_reports.refresh()
+            ok = result
             await interaction.followup.send("Daily report refreshed." if ok else "Report recovery is pending; try again later.", ephemeral=True)
 
     @realm.command(name="status", description="View the selected Realm state and observation time")
