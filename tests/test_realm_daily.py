@@ -288,3 +288,26 @@ async def test_history_combines_realms_without_double_counting(tmp_path):
     assert sum((b-a).total_seconds() for spans in groups.values() for a,b in spans) == 4*3600
     assert embed.fields[0].value == '2'
     assert controller.report_realms(datetime.now(timezone.utc).astimezone(__import__('utils.realms.daily',fromlist=['ZONE']).ZONE).date()) == ('35868436',)
+
+
+def test_future_rounded_interval_is_revalidated_on_later_import(tmp_path):
+    from datetime import datetime, timezone
+    from utils.players.activity import ingest
+    from utils.players.activity_models import RealmActivity
+    from utils.integrations.realms.stories import parse_stories
+    from utils.integrations.realms.models import Snapshot
+    backend = SqliteDatabase(tmp_path / 'revalidation.sqlite')
+    activity_migrate(backend, apply=True, backup_verified=True)
+    start = datetime(2026,11,12,14,tzinfo=timezone.utc)
+    end = start+timedelta(hours=2)
+    body = {'result': {'activity': {'123456': [{'s':int(start.timestamp()),'e':int(end.timestamp())}]}}}
+    with backend.connection_context():
+        first = start+timedelta(minutes=90)
+        assert ingest(Snapshot(parse_stories(body,first),first),'35868436')['quarantined'] == 1
+        later = end+timedelta(minutes=1)
+        result = ingest(Snapshot(parse_stories(body,later),later),'35868436')
+        assert result['created'] == 0 and result['existing'] == 1 and result['quarantined'] == 0
+        row = RealmActivity.get()
+        assert row.status == 'observed' and row.reason == ''
+        assert row.end == end.replace(tzinfo=None)
+        assert RealmActivity.select().count() == 1

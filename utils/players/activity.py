@@ -78,6 +78,14 @@ def ingest(snapshot, selected_realm):
                 "status": item.status, "reason": item.reason,
                 "first_observed": observed, "last_observed": observed})
             if not created:
+                # Rounded history can initially extend beyond the fetch timestamp.
+                # Promote only when the same raw interval passes the parser later.
+                if row.status == 'quarantined' and row.reason == 'future_timestamp' and item.status == 'observed':
+                    RealmActivity.update(start=item.start.replace(tzinfo=None),
+                        end=item.end.replace(tzinfo=None), status='observed', reason='').where(
+                        (RealmActivity.id == row.id) & (RealmActivity.status == 'quarantined') &
+                        (RealmActivity.reason == 'future_timestamp')).execute()
+                    row = RealmActivity.get_by_id(row.id)
                 RealmActivity.update(last_observed=observed).where(
                     (RealmActivity.id == row.id) & (RealmActivity.last_observed < observed)).execute()
                 if row.player_id is None and target is not None:
