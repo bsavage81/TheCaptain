@@ -13,7 +13,7 @@ from .daily import database
 from .daily_models import DailyReport
 from .daily_timeline import load_font, player_color, row_names, ZONE
 from utils.players.activity import verified_player
-from utils.players.activity_models import RealmActivity
+from .activity_history import season_realms, read_activity
 from utils.players.models import Player, utcnow
 
 log = logging.getLogger(__name__)
@@ -180,8 +180,8 @@ class LeaderboardController:
     async def load(self):
         realm=self.runtime.config.selected_realm_id
         def read():
-            records=list(RealmActivity.select().where((RealmActivity.realm_id==realm) & (RealmActivity.status=='observed')))
-            rows=rankings([(r.xuid,r.start,r.end) for r in records],utcnow())
+            activity, _, updated = read_activity(season_realms(realm))
+            rows=rankings(activity,utcnow())
             names,links={},{}
             for xuid,_ in rows:
                 identity=verified_player(xuid)
@@ -190,7 +190,7 @@ class LeaderboardController:
                     names[xuid]={'gamertag':player.gamertag or None}
                     if player.discord_id:
                         links[xuid]=(player.discord_id,player.discord_name)
-            return rows,names,links,max((r.last_observed for r in records),default=None)
+            return rows,names,links,updated
         rows,names,links,updated=await database(read)
         guild=self.bot.get_guild(self.bot.settings['Coastal'])
         cache=getattr(self.runtime.names,'entries',{}) if self.runtime.names else {}

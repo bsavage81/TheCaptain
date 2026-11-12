@@ -296,7 +296,7 @@ async def test_history_combines_realms_without_double_counting(tmp_path):
     assert len(groups) == 2
     assert sum((b-a).total_seconds() for spans in groups.values() for a,b in spans) == 4*3600
     assert embed.fields[0].value == '2'
-    assert controller.report_realms(datetime.now(timezone.utc).astimezone(__import__('utils.realms.daily',fromlist=['ZONE']).ZONE).date()) == ('35868436',)
+    assert controller.report_realms(datetime.now(timezone.utc).astimezone(__import__('utils.realms.daily',fromlist=['ZONE']).ZONE).date()) == ('35868436', '11451943')
 
 
 def test_future_rounded_interval_is_revalidated_on_later_import(tmp_path):

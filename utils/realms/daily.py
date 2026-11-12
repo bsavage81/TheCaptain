@@ -13,7 +13,8 @@ from utils.players.activity import ingest, verified_player
 from utils.players.activity_models import RealmActivity
 from utils.players.models import Player, utcnow
 from .daily_models import DailyCollection, DailyReport
-from .presence import PresenceSample, save_sample, prefer_presence
+from .presence import PresenceSample, save_sample
+from .activity_history import season_realms, read_activity
 from .daily_timeline import ZONE, aggregate, window, render
 
 log = logging.getLogger(__name__)
@@ -159,35 +160,14 @@ class DailyController:
             log.warning('Daily Realm collection unavailable')
 
     def report_realms(self, day):
-        current = self.runtime.config.selected_realm_id
-        if day >= datetime.now(ZONE).date():
-            return (current,)
-        # The reviewed archive mapping is the same one used by old Stories restoration.
-        from utils.core_features.__constants import ROOT
-        old = json.loads((ROOT / 'config' / 'old-coastal-s10-stories.json').read_text(encoding='utf-8'))['realm_id']
-        return tuple(dict.fromkeys((current, old)))
+        return season_realms(self.runtime.config.selected_realm_id)
 
     async def report(self, day):
         realm = self.runtime.config.selected_realm_id
         realms = self.report_realms(day)
         lo, hi = (v.replace(tzinfo=None) for v in window(day))
         def read():
-            rows, samples = [], []
-            has_presence = PresenceSample.table_exists()
-            for source in realms:
-                source_rows = list(RealmActivity.select(RealmActivity.xuid, RealmActivity.start, RealmActivity.end).where(
-                    (RealmActivity.realm_id == source) & (RealmActivity.status == 'observed') &
-                    (RealmActivity.start < hi) & (RealmActivity.end > lo)).tuples())
-                source_samples = []
-                if has_presence:
-                    source_samples = [(sample.observed, json.loads(sample.online)) for sample in
-                               PresenceSample.select().where((PresenceSample.realm == source) &
-                               (PresenceSample.observed >= lo-timedelta(seconds=45)) &
-                               (PresenceSample.observed <= hi+timedelta(seconds=45))).order_by(PresenceSample.observed)]
-                # Presence on one Realm cannot invalidate activity on the other.
-                rows.extend(prefer_presence(source_rows, source_samples))
-                samples.extend(source_samples)
-            samples.sort(key=lambda item: item[0])
+            rows, samples, _ = read_activity(realms, lo=lo, hi=hi)
             names, linked = {}, {}
             for xuid in {r[0] for r in rows if r[0]}:
                 player_id = verified_player(xuid)

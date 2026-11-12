@@ -44,7 +44,7 @@ async def test_source_filter_and_pagination_lifecycle(tmp_path):
     bot=NS(settings={'Coastal':1},get_guild=lambda _:None)
     controller=LeaderboardController(bot,NS(config=NS(selected_realm_id='35868436'),names=None,view=NS(activity=None)))
     data=await controller.load()
-    assert data[0]==[('123456',3600)]
+    assert data[0]==[('123456',3600),('123457',3600)]
     large=([(str(i),3600-i) for i in range(21)],{},data[2])
     view=LeaderboardView(controller,10,large)
     controller.views.add(view)
@@ -109,3 +109,41 @@ async def test_permanent_post_recovers_send_survives_restart_and_skips_unchanged
     with backend.connection_context():
         assert DailyReport.get().message==50
         assert DailyReport.select().count()==1
+
+
+@pytest.mark.asyncio
+async def test_leaderboard_matches_timeline_across_server_move_and_presence(tmp_path):
+    import json
+    from datetime import date
+    from migrations.realm_daily import migrate as daily_migrate
+    from utils.realms.daily import DailyController
+    from utils.realms.daily_timeline import window
+    from utils.realms.presence import PresenceSample
+    backend=SqliteDatabase(tmp_path/'combined-leaderboard.sqlite')
+    migrate(backend,apply=True,backup_verified=True)
+    daily_migrate(backend,apply=True,backup_verified=True)
+    day=date(2026,10,31)
+    lo=window(day)[0].replace(tzinfo=None)
+    with backend.connection_context():
+        backend.create_tables([PresenceSample])
+        for i,realm,xuid,start,end,status in [
+            (1,'11451943','123456',0,2,'observed'),
+            (2,'35868436','123456',1,3,'observed'),
+            (3,'999','123456',5,9,'observed'),
+            (4,'11451943','123456',5,9,'quarantined'),
+            (5,'35868436','654321',4,5,'observed')]:
+            RealmActivity.create(key=str(i),realm_id=realm,xuid=xuid,raw_start='0',raw_end='1',
+                start=lo+timedelta(hours=start),end=lo+timedelta(hours=end),status=status,last_observed=lo)
+        # Live empty coverage replaces 30 seconds of current Stories, but does
+        # not remove a different player's old-Realm presence in the same window.
+        for seconds in (0,15,30):
+            stamp=lo+timedelta(hours=4,seconds=seconds)
+            PresenceSample.create(realm='35868436',observed=stamp,online='[]')
+            PresenceSample.create(realm='11451943',observed=stamp,online=json.dumps(['789123']))
+    bot=NS(settings={'Coastal':1},get_guild=lambda _:None)
+    runtime=NS(config=NS(selected_realm_id='35868436'),names=None,view=NS(activity=None))
+    board=await LeaderboardController(bot,runtime).load()
+    _,_,groups,_=await DailyController(bot,runtime).report(day)
+    daily={x:sum((end-start).total_seconds() for start,end in spans) for x,spans in groups.items()}
+    assert dict(board[0])==daily=={'123456':10800,'654321':3570,'789123':30}
+    assert board[2]==lo+timedelta(hours=4,seconds=30)
