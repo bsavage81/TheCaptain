@@ -47,6 +47,7 @@ class StoriesController:
 
     def start(self):
         if not self.poll.is_running():
+            log.info('Stories scheduler starting; interval_seconds=300; enabled=%s', self.config['enabled'] if self.config else 'pending_initial_setup')
             self.poll.start()
 
     async def close(self):
@@ -100,15 +101,20 @@ class StoriesController:
                     channel = await self.bot.fetch_channel(config['channel_id'])
                 if getattr(getattr(channel, 'guild', None), 'id', None) != config['guild_id']:
                     raise ValueError('Wrong Stories guild')
-                success, _ = await self.publish(channel, config['guild_id'], lambda: self.authorized(config))
+                success, report = await self.publish(channel, config['guild_id'], lambda: self.authorized(config))
                 if not success:
+                    # Publisher reports are composed from fixed messages/codes,
+                    # never raw upstream exceptions or response content.
+                    log.warning('Stories publication failed: %s', report)
                     raise RuntimeError('Stories sync unavailable')
+                if self.failures:
+                    log.info('Stories sync recovered')
                 self.failures = 0
                 return True
-            except Exception:
+            except Exception as error:
                 self.failures += 1
                 self.retry_at = self.clock() + min(3600, 300 * 2 ** min(self.failures - 1, 4))
-                log.warning('Stories sync unavailable; backing off')
+                log.warning('Stories sync unavailable; category=%s; retry_in_seconds=%s', type(error).__name__, int(self.retry_at - self.clock()))
                 return False
 
     @tasks.loop(seconds=300)

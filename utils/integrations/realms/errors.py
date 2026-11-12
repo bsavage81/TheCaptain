@@ -51,6 +51,14 @@ class StorageBusy(StorageError):
 class TransportError(RealmsError):
     category = "upstream_transport_failed"
 
+    def __init__(self, reason='connection', service='upstream'):
+        if reason not in {'connection', 'timeout', 'tls', 'invalid_request', 'session_unavailable'}:
+            raise ValueError('Invalid transport reason')
+        if service not in {'upstream', 'realm_stories', 'xbox_stories', 'realms', 'authentication', 'profiles'}:
+            raise ValueError('Invalid transport service')
+        self.reason, self.service = reason, service
+        super().__init__()
+
 
 class HTTPFailure(RealmsError):
     def __init__(self, status, retry_after=None):

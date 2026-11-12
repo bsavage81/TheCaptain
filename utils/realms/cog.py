@@ -70,6 +70,7 @@ def render(view, kind, cooldown=0):
 class RealmCommands(commands.Cog):
     realm = app_commands.Group(name="realm", description="Coastal Craft Realm observations", guild_only=True)
     panel = app_commands.Group(name="panel", description="Manage the live Realm status panel", parent=realm)
+    daily_group = app_commands.Group(name="daily", description="Manage observed daily Realm timelines", parent=realm)
     metrics_panel = app_commands.Group(name="metrics", description="Manage the live Realms Pro metrics panel", parent=realm)
 
     def __init__(self, bot, *, runtime=None):
@@ -81,6 +82,8 @@ class RealmCommands(commands.Cog):
         self.runtime = runtime if runtime is not None else RealmRuntime(bot.settings)
         self.panels = PanelController(bot, self.runtime)
         self.metrics_panels = MetricsController(bot, self.runtime)
+        from .daily import DailyController
+        self.daily_reports = DailyController(bot, self.runtime)
         from .stories_sync import StoriesController
         self.stories_sync = StoriesController(bot, self.runtime, self._publish_stories)
 
@@ -90,8 +93,10 @@ class RealmCommands(commands.Cog):
             self.panels.start()
             self.metrics_panels.start()
             self.stories_sync.start()
+            self.daily_reports.start()
 
     async def cog_unload(self):
+        await self.daily_reports.close()
         await self.stories_sync.close()
         await self.metrics_panels.close()
         await self.panels.close()
@@ -194,7 +199,7 @@ class RealmCommands(commands.Cog):
 
     async def _publish_stories(self, channel, guild_id, authorized, *, old_realm=False):
         from .stories_feed import render_feed, artwork_file
-        from utils.integrations.realms.errors import HTTPFailure, StoriesError, RealmsError
+        from utils.integrations.realms.errors import HTTPFailure, StoriesError, RealmsError, TransportError
         posted = updated = 0
         stage = 'read_stories'
         success = False
@@ -313,6 +318,8 @@ class RealmCommands(commands.Cog):
             if error.retry_after is not None:
                 self._stories_retry_at = asyncio.get_running_loop().time() + max(0, error.retry_after)
             message = f"Posted {posted} Stories embed(s). Feed unavailable (HTTP {error.status}); no feed retry made."
+        except TransportError as error:
+            message = f"Posted {posted} Stories embed(s), updated {updated}. Stopped at {stage}: {error.service} {error.reason}. Transient Stories reads are retried once; a later run can recover missing posts."
         except RealmsError as error:
             message = f"Posted {posted} Stories embed(s). Stopped: {error.category}. No private error details shown."
         except Exception:
@@ -374,6 +381,55 @@ class RealmCommands(commands.Cog):
                 file=report, ephemeral=True, allowed_mentions=discord.AllowedMentions.none())
         else:
             await interaction.followup.send(message, ephemeral=True, allowed_mentions=discord.AllowedMentions.none())
+
+    @daily_group.command(name="enable", description="Enable daily reports in a chosen public channel")
+    @app_commands.describe(channel="Public Coastal Craft text channel for daily reports")
+    async def daily_enable(self, interaction: discord.Interaction, channel: discord.TextChannel):
+        await self.configure_daily(interaction, True, channel)
+
+    @daily_group.command(name="disable", description="Stop daily collection and automatic report updates")
+    async def daily_disable(self, interaction: discord.Interaction):
+        await self.configure_daily(interaction, False)
+
+    async def configure_daily(self, interaction, enabled, channel=None):
+        if not permitted(self.bot.settings, interaction):
+            await interaction.response.send_message("Realm commands require the Coastal OP Team role in Coastal Craft.", ephemeral=True)
+            return
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        try:
+            await self.daily_reports.configure(enabled, channel)
+        except ValueError as error:
+            await interaction.followup.send(str(error), ephemeral=True, allowed_mentions=discord.AllowedMentions.none())
+            return
+        message = (f"Daily Realm reports enabled in {channel.mention}. Activity history collection is enabled; reports use America/Chicago time."
+                   if enabled else "Daily Realm reports disabled. Existing messages are preserved.")
+        await interaction.followup.send(message, ephemeral=True, allowed_mentions=discord.AllowedMentions.none())
+
+    @daily_group.command(name="preview", description="Privately preview yesterday's observed Realm timeline")
+    async def daily_preview(self, interaction: discord.Interaction):
+        await self.daily_response(interaction, preview=True)
+
+    @daily_group.command(name="refresh", description="Refresh yesterday's existing public report")
+    async def daily_refresh(self, interaction: discord.Interaction):
+        await self.daily_response(interaction, preview=False)
+
+    async def daily_response(self, interaction, *, preview):
+        if not permitted(self.bot.settings, interaction):
+            await interaction.response.send_message("Realm commands require the Coastal OP Team role in Coastal Craft.", ephemeral=True)
+            return
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        if preview:
+            embed, png = await self.daily_reports.refresh(preview=True)
+            if permitted(self.bot.settings, interaction):
+                attachment = discord.File(io.BytesIO(png), filename="realm-daily.png")
+                try:
+                    await interaction.followup.send(embed=embed, file=attachment, ephemeral=True,
+                                                    allowed_mentions=discord.AllowedMentions.none())
+                finally:
+                    attachment.close()
+        elif permitted(self.bot.settings, interaction):
+            ok = await self.daily_reports.refresh()
+            await interaction.followup.send("Daily report refreshed." if ok else "Report recovery is pending; try again later.", ephemeral=True)
 
     @realm.command(name="status", description="View the selected Realm state and observation time")
     async def status(self, interaction: discord.Interaction):

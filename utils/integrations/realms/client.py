@@ -2,7 +2,7 @@
 import asyncio
 import random
 
-from .errors import AccessDenied, HTTPFailure, ProtocolError, StoriesError
+from .errors import AccessDenied, HTTPFailure, ProtocolError, StoriesError, TransportError
 from .models import Activity, Invitation, Realm, Snapshot, members, realm_id, text, utcnow
 from .transport import REALMS_HOST, STORIES_HOST
 
@@ -44,8 +44,8 @@ class RealmsClient:
             if path in {stories_path, feed_path}:
                 headers["Cache-Control"] = "no-cache, no-store"
             frontend = path in {stories_path, feed_path} or path.startswith("/api/v1.0/telemetry/")
-            response = await self.transport.request("GET", (STORIES_HOST if frontend else REALMS_HOST) + path,
-                                                    headers=headers)
+            url = (STORIES_HOST if frontend else REALMS_HOST) + path
+            response = await self._stories_get(url, headers) if path == feed_path else await self.transport.request("GET", url, headers=headers)
             if response.status == 200:
                 return response.body
             if path == feed_path:
@@ -64,6 +64,17 @@ class RealmsClient:
                 attempts += 1
                 continue
             raise HTTPFailure(response.status, response.retry_after)
+
+    async def _stories_get(self, url, headers):
+        """Retry one transient read on the same allowlisted URL; never retry auth POSTs."""
+        for attempt in range(2):
+            self.config.authorize(self.principal)
+            try:
+                return await self.transport.request('GET', url, headers=headers)
+            except TransportError as error:
+                if attempt or error.reason not in {'connection', 'timeout'}:
+                    raise
+                await self.sleep(1)
 
     async def story_feed(self):
         """One selected-Realm feed GET, independent of player activity."""
@@ -118,7 +129,7 @@ class RealmsClient:
                 raise StoriesError('cursor_repeat')
             seen.add(url)
             self.config.authorize(self.principal)
-            response = await self.transport.request("GET", url, headers={
+            response = await self._stories_get(url, headers={
                 "Authorization": token.authorization.value,
                 "x-xbl-contract-version": "13", "Accept": "application/json",
                 "Accept-Language": "en-US", "Cache-Control": "no-cache, no-store",

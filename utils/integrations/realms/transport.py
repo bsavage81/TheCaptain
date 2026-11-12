@@ -91,9 +91,13 @@ class AiohttpTransport:
             raise AccessDenied()
         if url == self._stories_feed:
             self._story_probe_reads = frozenset()
+        service = ('realm_stories' if url == self._stories_feed else
+                   'xbox_stories' if url in self._story_probe_reads else
+                   'authentication' if url in AUTH_URLS else
+                   'profiles' if url == PROFILE_BATCH else 'realms')
         if self._session is None:
-            raise TransportError()
-        failed = False
+            raise TransportError('session_unavailable', service)
+        failed = None
         result = None
         try:
             async with self._semaphore:
@@ -134,9 +138,15 @@ class AiohttpTransport:
                         if next_url:
                             self._story_probe_reads |= frozenset({next_url})
                     result = Response(response.status, body, retry_delay(response.headers.get("Retry-After")))
-        except (aiohttp.ClientError, OSError, TimeoutError, ValueError):
-            failed = True
+        except (aiohttp.ClientSSLError, aiohttp.ClientConnectorCertificateError):
+            failed = 'tls'
+        except TimeoutError:
+            failed = 'timeout'
+        except (aiohttp.ClientError, OSError):
+            failed = 'connection'
+        except ValueError:
+            failed = 'invalid_request'
         # Raise outside except: raw errors can contain request headers or body fragments.
         if failed:
-            raise TransportError()
+            raise TransportError(failed, service)
         return result

@@ -9,13 +9,21 @@ import os
 import time
 
 from utils.integrations.realms.configuration import Principal, from_bot_settings
-from utils.integrations.realms.errors import ConfigurationError, HTTPFailure
+from utils.integrations.realms.errors import ConfigurationError, HTTPFailure, TransportError
 from utils.integrations.realms.models import Secret
 from utils.integrations.realms.service import RealmsService
 from utils.integrations.realms.token_store import EncryptedTokenStore
 from utils.integrations.realms.transport import AiohttpTransport
 
 log = logging.getLogger(__name__)
+
+
+def failure_code(error):
+    if isinstance(error, HTTPFailure):
+        return f'HTTP {error.status}'
+    if isinstance(error, TransportError):
+        return f'{error.service}:{error.reason}'
+    return type(error).__name__
 
 
 @dataclass(frozen=True)
@@ -134,7 +142,7 @@ class RealmRuntime:
                             realm = await self.client.realm()
                             realm_ok = True
                         except Exception as error:
-                            log.warning("Realms details unavailable (%s)", type(error).__name__)
+                            log.warning("Realms details unavailable (%s)", failure_code(error))
                             self._backoff(error)
                         if self._retry_at <= self._clock():
                             try:
@@ -195,7 +203,7 @@ class RealmRuntime:
                         if error.retry_after is not None:
                             delay = max(delay, error.retry_after)
                     self._metrics_retry_at = self._clock() + delay
-                    log.warning("Realm Pro metrics unavailable (%s)", type(error).__name__)
+                    log.warning("Realm Pro metrics unavailable (%s); retry_in_seconds=%s", failure_code(error), delay)
                 return self._metrics_snapshot, self._metrics_available
         finally:
             self._tasks.discard(task)
