@@ -145,20 +145,36 @@ class DailyController:
                 DailyCollection.realm == realm).execute())
             log.warning('Daily Realm collection unavailable')
 
+    def report_realms(self, day):
+        current = self.runtime.config.selected_realm_id
+        if day >= datetime.now(ZONE).date():
+            return (current,)
+        # The reviewed archive mapping is the same one used by old Stories restoration.
+        from utils.core_features.__constants import ROOT
+        old = json.loads((ROOT / 'config' / 'old-coastal-s10-stories.json').read_text(encoding='utf-8'))['realm_id']
+        return tuple(dict.fromkeys((current, old)))
+
     async def report(self, day):
         realm = self.runtime.config.selected_realm_id
+        realms = self.report_realms(day)
         lo, hi = (v.replace(tzinfo=None) for v in window(day))
         def read():
-            rows = list(RealmActivity.select(RealmActivity.xuid, RealmActivity.start, RealmActivity.end).where(
-                (RealmActivity.realm_id == realm) & (RealmActivity.status == 'observed') &
-                (RealmActivity.start < hi) & (RealmActivity.end > lo)).tuples())
-            samples = []
-            if PresenceSample.table_exists():
-                samples = [(sample.observed, json.loads(sample.online)) for sample in
-                           PresenceSample.select().where((PresenceSample.realm == realm) &
-                           (PresenceSample.observed >= lo-timedelta(seconds=45)) &
-                           (PresenceSample.observed <= hi+timedelta(seconds=45))).order_by(PresenceSample.observed)]
-            rows = prefer_presence(rows, samples)
+            rows, samples = [], []
+            has_presence = PresenceSample.table_exists()
+            for source in realms:
+                source_rows = list(RealmActivity.select(RealmActivity.xuid, RealmActivity.start, RealmActivity.end).where(
+                    (RealmActivity.realm_id == source) & (RealmActivity.status == 'observed') &
+                    (RealmActivity.start < hi) & (RealmActivity.end > lo)).tuples())
+                source_samples = []
+                if has_presence:
+                    source_samples = [(sample.observed, json.loads(sample.online)) for sample in
+                               PresenceSample.select().where((PresenceSample.realm == source) &
+                               (PresenceSample.observed >= lo-timedelta(seconds=45)) &
+                               (PresenceSample.observed <= hi+timedelta(seconds=45))).order_by(PresenceSample.observed)]
+                # Presence on one Realm cannot invalidate activity on the other.
+                rows.extend(prefer_presence(source_rows, source_samples))
+                samples.extend(source_samples)
+            samples.sort(key=lambda item: item[0])
             names, linked = {}, {}
             for xuid in {r[0] for r in rows if r[0]}:
                 player_id = verified_player(xuid)
@@ -204,7 +220,7 @@ class DailyController:
             embed.timestamp = success.replace(tzinfo=timezone.utc)
         embed.set_image(url='attachment://realm-daily.png')
         # Include source interval count and merged spans; never publish identifiers.
-        content = ['season10-single-footer-v7', day.isoformat(), embed.to_dict(), [(x, names.get(x), [(a.isoformat(), b.isoformat()) for a, b in spans])
+        content = ['season10-unified-history-v8', day.isoformat(), embed.to_dict(), [(x, names.get(x), [(a.isoformat(), b.isoformat()) for a, b in spans])
                                      for x, spans in sorted(groups.items())]]
         signature = hashlib.sha256(json.dumps(content, sort_keys=True).encode()).hexdigest()
         return embed, signature, groups, names
@@ -285,14 +301,15 @@ class DailyController:
                     raise DailyUnavailable('Choose today or a past date in YYYY-MM-DD format.')
                 if day < today:
                     lo, hi = (v.replace(tzinfo=None) for v in window(day))
+                    realms = self.report_realms(day)
                     if not await database(lambda: RealmActivity.select().where(
-                            (RealmActivity.realm_id == self.runtime.config.selected_realm_id) &
+                            (RealmActivity.realm_id.in_(realms)) &
                             (RealmActivity.status == 'observed') & (RealmActivity.start < hi) &
                             (RealmActivity.end > lo)).exists() or (PresenceSample.table_exists() and
-                            PresenceSample.select().where((PresenceSample.realm == self.runtime.config.selected_realm_id) &
+                            PresenceSample.select().where((PresenceSample.realm.in_(realms)) &
                             (PresenceSample.observed >= lo) & (PresenceSample.observed < hi) &
                             (PresenceSample.online != '[]')).exists())):
-                        raise DailyUnavailable('No stored activity observations overlap that date for the selected Realm. Missing history does not establish inactivity.')
+                        raise DailyUnavailable('No stored activity observations overlap that date for Coastal Craft (current or old Realm). Missing history does not establish inactivity.')
                 if preview:
                     stage = 'report data'
                     embed, _, groups, names = await self.report(day)

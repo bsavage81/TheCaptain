@@ -259,3 +259,32 @@ def test_presence_samples_persist_empty_observations_and_deduplicate(tmp_path):
 def test_display_duration_keeps_subminute_visits_and_rounds_longer_totals(seconds, expected):
     from utils.realms.daily_timeline import duration
     assert duration(seconds) == expected
+
+
+@pytest.mark.asyncio
+async def test_history_combines_realms_without_double_counting(tmp_path):
+    from datetime import datetime, timezone
+    from utils.players.activity_models import RealmActivity
+    from utils.realms.presence import PresenceSample
+    backend = SqliteDatabase(tmp_path / 'combined.sqlite')
+    activity_migrate(backend, apply=True, backup_verified=True)
+    migrate(backend, apply=True, backup_verified=True)
+    day = date(2026, 10, 31)
+    lo = window(day)[0].replace(tzinfo=None)
+    with backend.connection_context():
+        backend.create_tables([PresenceSample])
+        for index, realm, xuid, start, end in [(1,'35868436','123456',0,2),
+                (2,'11451943','123456',1,3), (3,'11451943','654321',4,5)]:
+            RealmActivity.create(key=str(index), realm_id=realm, xuid=xuid,
+                raw_start='0', raw_end='1', start=lo+timedelta(hours=start),
+                end=lo+timedelta(hours=end), status='observed')
+        # Empty current-Realm polling must not erase old-Realm activity.
+        PresenceSample.create(realm='35868436', observed=lo+timedelta(hours=4), online='[]')
+        PresenceSample.create(realm='35868436', observed=lo+timedelta(hours=4,seconds=15), online='[]')
+    controller = DailyController(NS(settings={'Coastal':1}, get_guild=lambda _: None),
+        NS(config=NS(selected_realm_id='35868436'), names=None))
+    embed, _, groups, _ = await controller.report(day)
+    assert len(groups) == 2
+    assert sum((b-a).total_seconds() for spans in groups.values() for a,b in spans) == 4*3600
+    assert embed.fields[0].value == '2'
+    assert controller.report_realms(datetime.now(timezone.utc).astimezone(__import__('utils.realms.daily',fromlist=['ZONE']).ZONE).date()) == ('35868436',)

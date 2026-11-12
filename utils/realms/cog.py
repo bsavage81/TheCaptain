@@ -456,7 +456,7 @@ class RealmCommands(commands.Cog):
                 '\nAPI timestamps are preserved, including hourly boundaries. These are observed intervals, not verified sessions. Each Realm is stored separately; repeated imports do not duplicate intervals. No timeline is inferred from Story posts.',
                 ephemeral=True, allowed_mentions=discord.AllowedMentions.none())
 
-    @daily_group.command(name="history", description="Preview or post stored Realm activity for a specific date")
+    @daily_group.command(name="history", description="Preview or post combined Coastal Realm history for a date")
     @app_commands.describe(day="Report date in YYYY-MM-DD format (America/Chicago)",
                            publish="Post to the configured report channel; otherwise preview privately")
     async def daily_history(self, interaction: discord.Interaction, day: str, publish: bool = False):
