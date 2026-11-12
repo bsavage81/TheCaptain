@@ -65,6 +65,15 @@ def initialize_database(settings, backend=None):
             from utils.configuration import read_database_settings
             settings.update(read_database_settings(backend))
         row = ensure_production_row()
+        # Daily report checkpoints are additive startup tables, like other bot state.
+        # Import lazily because these models inherit BaseModel from this module.
+        from utils.realms.daily_models import DailyReport, DailyCollection
+        missing_daily = [model for model in (DailyReport, DailyCollection)
+                         if not model.table_exists()]
+        if missing_daily:
+            if isinstance(backend, MySQLDatabase):
+                backend.execute_sql("SET SESSION default_storage_engine=InnoDB")
+            backend.create_tables(missing_daily, safe=True)
         if not Administrators.select().exists():
             for owner in settings.get("owner_ids", [306070011028439041]):
                 Administrators.get_or_create(discordID=owner, defaults={"TierLevel": 4})

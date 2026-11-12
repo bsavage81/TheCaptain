@@ -1,4 +1,4 @@
-"""Durable daily delivery and collector checkpoints; explicit migration only."""
+"""Durable daily checkpoints; registered by database initialization, never on import."""
 from peewee import CharField, DateField, DateTimeField, BigIntegerField
 from utils.database.__database import BaseModel
 

@@ -120,3 +120,25 @@ async def test_preview_disabled_reads_stored_data(tmp_path):
         DailyReport.drop_table()
     with pytest.raises(DailyUnavailable, match='tables are missing'):
         await controller.refresh(preview=True)
+
+
+def test_database_startup_creates_daily_tables_and_preserves_records(tmp_path):
+    from utils.database.__database import db, BotData, Administrators, initialize_database
+    from utils.realms.daily_models import DailyCollection
+    backend = SqliteDatabase(tmp_path / 'startup.sqlite')
+    db.initialize(backend)
+    with backend.connection_context():
+        backend.create_tables([BotData, Administrators])
+        BotData.create(id=1, prefix='!')
+    settings = {'owner_ids': [123]}
+    initialize_database(settings, backend=backend)
+    with backend.connection_context():
+        DailyCollection.create(realm='35868436', outcome='available')
+        report = DailyReport.create(guild=1, channel=2, realm='35868436', day=date(2026, 11, 11), message=456)
+        identity = report.id
+    initialize_database(settings, backend=backend)
+    with backend.connection_context():
+        assert DailyCollection.get().outcome == 'available'
+        assert DailyReport.get_by_id(identity).message == 456
+        assert DailyReport.select().count() == 1
+        assert BotData.get_by_id(1).prefix == '!'
