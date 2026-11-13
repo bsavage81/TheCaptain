@@ -6,6 +6,7 @@ from utils.core_features.__constants import ROOT
 from utils.integrations.realms.models import realm_id
 from utils.players.activity_models import RealmActivity
 from .presence import PresenceSample, prefer_presence
+from .activity_credit import ActivityRows
 
 
 def season_realms(current):
@@ -16,7 +17,7 @@ def season_realms(current):
 
 def read_activity(realms, *, lo=None, hi=None):
     """Caller owns DB connection. Presence overrides Stories per source Realm."""
-    rows, samples, updates = [], [], []
+    rows, samples, updates = ActivityRows(), [], []
     has_presence = PresenceSample.table_exists()
     for source in realms:
         query = RealmActivity.select(RealmActivity.xuid, RealmActivity.start,
@@ -39,6 +40,7 @@ def read_activity(realms, *, lo=None, hi=None):
             source_samples = [(s.observed, json.loads(s.online)) for s in query.order_by(PresenceSample.observed)]
         # An empty roster on the new server cannot erase time on the old server.
         rows.extend(prefer_presence([(r.xuid, r.start, r.end) for r in records], source_samples))
+        rows.presence.extend(prefer_presence([], source_samples))
         samples.extend(source_samples)
         updates.extend(r.last_observed for r in records if r.last_observed is not None)
     samples.sort(key=lambda item: item[0])

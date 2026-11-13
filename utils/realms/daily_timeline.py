@@ -4,6 +4,8 @@ from zoneinfo import ZoneInfo
 import hashlib
 import io
 
+from .activity_credit import ActivityGroups, credited_totals, group_credit
+
 ZONE = ZoneInfo('America/Chicago')
 UTC = timezone.utc
 
@@ -34,7 +36,8 @@ def aggregate(rows, day):
             else:
                 merged.append((a, b))
         groups[xuid] = merged
-    seconds = sum((b-a).total_seconds() for spans in groups.values() for a, b in spans)
+    groups = ActivityGroups(groups, credited_totals(rows, lo=lo, hi=hi))
+    seconds = sum(groups.credits.values())
     return groups, count, seconds
 
 
@@ -69,7 +72,7 @@ def row_names(xuid, names):
 
 
 def ordered_players(groups):
-    return sorted(groups, key=lambda x: (-sum((b-a).total_seconds() for a, b in groups[x]), x))
+    return sorted(groups, key=lambda x: (-group_credit(groups, x), x))
 
 
 def axis_ticks(day):
@@ -148,15 +151,15 @@ def render(day, groups, names, collected_at=None):
             x1 = left+width*(a-lo).total_seconds()/elapsed
             x2 = left+width*(b-lo).total_seconds()/elapsed
             draw.rectangle((x1, y+23, min(left+width, max(x1+1, x2)), y+42), fill=color)
-        total = sum((b-a).total_seconds() for a, b in groups[xuid])
+        total = group_credit(groups, xuid)
         draw.text((1158, y+19), duration(total), font=heading, fill='#e3edf5', anchor='ra')
     if not groups:
         draw.text((40, top+20), 'No activity intervals observed; coverage may be unavailable.', font=regular, fill='#afc5d7')
-    footer = 'Observed · Unverified'
+    footer = 'Credit: live 100%, timeline-only 50%'
     if lo <= now < hi:
-        footer = 'Live · Dark = future'
+        footer = 'Live 100%, timeline-only 50% · Dark = future'
     elif hours != 24:
-        footer = f'Observed · {hours}h DST day'
+        footer = f'Live 100%, timeline-only 50% · {hours}h DST day'
     draw.text((30, image.height-32), footer, font=small, fill='#8fa7bb')
     if collected_at is not None:
         local = collected_at.astimezone(ZONE)

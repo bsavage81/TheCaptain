@@ -32,3 +32,31 @@ old-Realm presence-only activity, quarantined rows and unrelated Realm rows.
 The timeline and leaderboard suites pass. A broader stored-history test,
 `test_quarantine_never_silently_promoted_and_utc_normalized`, also fails on unchanged
 main (f666493); its quarantine-promotion expectation is outside this change.
+
+## Playtime credit policy
+
+Timeline API coverage without supporting live-presence observations now earns
+50% credit: one recorded hour earns 30 minutes. Live-presence coverage earns 100%.
+For mixed coverage, only the API-only portion is discounted. For example, an hour
+covered by the API with 20 minutes also observed live earns 20 + 40/2 = 40 minutes.
+The rule applies retrospectively when reading stored history, without altering
+raw timestamps, observations or database records.
+
+Source provenance is retained by `ActivityRows`. Coverage and live intervals are
+unioned across both Season 10 Realm IDs before calculating credit. Duplicate or
+overlapping API intervals never multiply credit, and live coverage on either
+server keeps full credit even when overlapping the other server's API history.
+Presence overrides on each source still exclude periods known to be offline.
+
+Daily reports, per-player timeline totals, timeline ordering and leaderboard
+rankings use the same policy. Timeline bars retain the original coverage positions;
+they are not shortened to pretend the API identified a particular half-hour.
+Labels explain that live data gets 100% and timeline-only data 50%. Daily clipping
+uses the existing local-day/DST boundaries; leaderboard credit stops at now.
+Small display-rounding differences can remain when adding formatted daily totals.
+
+No migration, historical reimport, new setting or command sync is needed. Restart
+with the new code to recalculate leaderboard views through the existing refresh
+flow. Previously published/finalized daily images need a fresh report/preview to
+show the new credited totals. The policy is a credit convention, not a claim that
+API-only sessions lasted exactly half of their returned span.

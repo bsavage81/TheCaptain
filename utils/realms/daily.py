@@ -204,16 +204,16 @@ class DailyController:
         status += ('\nIn progress; future hours have not elapsed.' if day == datetime.now(ZONE).date() else '\nScheduled updates finalized; observations may be incomplete.')
         status += '\nLatest collection: ' + outcome + '. Coverage is partial and unverified.'
         embed = discord.Embed(title='Daily Realm Activity Summary',
-                              description='Missing data does not establish inactivity.', color=0x78B84A)
+                              description='Playtime credit: live presence 100%; timeline-only coverage 50%. Missing data does not establish inactivity.', color=0x78B84A)
         embed.add_field(name='Unique observed players', value=str(len(groups)))
-        embed.add_field(name='Combined observed activity', value=f'{int(seconds//3600)}h {int(seconds%3600//60)}m')
+        embed.add_field(name='Combined credited playtime', value=f'{int(seconds//3600)}h {int(seconds%3600//60)}m')
         embed.add_field(name='Observed activity intervals', value=str(count))
         embed.add_field(name='Collection status', value=status, inline=False)
         if success:
             embed.timestamp = success.replace(tzinfo=timezone.utc)
         embed.set_image(url='attachment://realm-daily.png')
         # Include source interval count and merged spans; never publish identifiers.
-        content = ['season10-unified-history-v8', day.isoformat(), embed.to_dict(), [(x, names.get(x), [(a.isoformat(), b.isoformat()) for a, b in spans])
+        content = ['season10-half-timeline-credit-v9', day.isoformat(), embed.to_dict(), sorted(groups.credits.items()), [(x, names.get(x), [(a.isoformat(), b.isoformat()) for a, b in spans])
                                      for x, spans in sorted(groups.items())]]
         signature = hashlib.sha256(json.dumps(content, sort_keys=True).encode()).hexdigest()
         return embed, signature, groups, names

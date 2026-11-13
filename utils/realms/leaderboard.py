@@ -14,6 +14,7 @@ from .daily_models import DailyReport
 from .daily_timeline import load_font, player_color, row_names, ZONE
 from utils.players.activity import verified_player
 from .activity_history import season_realms, read_activity
+from .activity_credit import credited_totals
 from utils.players.models import Player, utcnow
 
 log = logging.getLogger(__name__)
@@ -22,21 +23,9 @@ POST_DAY = date(1970, 1, 1)  # Reserved ledger date for the permanent all-time p
 
 
 def rankings(rows, now):
-    """Union valid stored intervals per XUID, clipped to the observation cutoff."""
-    groups = {}
-    for xuid, start, end in rows:
-        if xuid and start is not None and end is not None and start < min(end, now):
-            groups.setdefault(xuid, []).append((start, min(end, now)))
-    result = []
-    for xuid, spans in groups.items():
-        merged = []
-        for start, end in sorted(spans):
-            if merged and start <= merged[-1][1]:
-                merged[-1] = merged[-1][0], max(end, merged[-1][1])
-            else:
-                merged.append((start, end))
-        result.append((xuid, sum((b-a).total_seconds() for a,b in merged)))
-    return sorted(result, key=lambda item: (-item[1], item[0]))
+    """Rank credited interval unions per XUID, clipped to the current cutoff."""
+    totals = credited_totals(rows, hi=now)
+    return sorted(totals.items(), key=lambda item: (-item[1], item[0]))
 
 
 def hours_minutes(seconds):
@@ -69,7 +58,7 @@ def render_page(data, page):
         draw.rectangle((x,12,x+7,19),fill='#f6b46d')
     draw.text((30,25),'COASTAL CRAFT · SEASON 10',font=regular,fill='#64cbe9')
     draw.text((30,58),'PLAYTIME LEADERBOARD',font=title,fill='#e3edf5')
-    draw.text((30,104),'The Mighty Mesa Reborn · All-Time Observed Playtime',font=regular,fill='#afc5d7')
+    draw.text((30,104),'The Mighty Mesa Reborn · All-Time Credited Playtime',font=regular,fill='#afc5d7')
     stats = [(str(len(rows)), 'OBSERVED PLAYERS'),
              (hours_minutes(sum(total for _,total in rows)), 'COMBINED ACTIVITY'),
              (hours_minutes(rows[0][1] if rows else 0), 'TOP PLAYER')]
@@ -94,7 +83,7 @@ def render_page(data, page):
         draw.text((1154,y+21),hours_minutes(total),font=heading,fill='#e3edf5',anchor='ra')
     if not rows:
         draw.text((42,258),'No recorded observed activity is available for the configured Realm.',font=regular,fill='#afc5d7')
-    draw.text((30,image.height-35),f'Page {page+1} of {pages} · Observed estimates; recorded coverage only',font=small,fill='#8fa7bb')
+    draw.text((30,image.height-35),f'Page {page+1} of {pages} · Credit: live 100%, timeline-only 50%',font=small,fill='#8fa7bb')
     stamp=updated.replace(tzinfo=timezone.utc).astimezone(ZONE).strftime('%b %d, %Y %I:%M %p %Z') if updated else 'unavailable'
     draw.text((1170,image.height-35),'Last activity update: '+stamp,font=small,fill='#8fa7bb',anchor='ra')
     output=io.BytesIO()

@@ -44,7 +44,7 @@ async def test_source_filter_and_pagination_lifecycle(tmp_path):
     bot=NS(settings={'Coastal':1},get_guild=lambda _:None)
     controller=LeaderboardController(bot,NS(config=NS(selected_realm_id='35868436'),names=None,view=NS(activity=None)))
     data=await controller.load()
-    assert data[0]==[('123456',3600),('123457',3600)]
+    assert data[0]==[('123456',1800),('123457',1800)]
     large=([(str(i),3600-i) for i in range(21)],{},data[2])
     view=LeaderboardView(controller,10,large)
     controller.views.add(view)
@@ -144,6 +144,6 @@ async def test_leaderboard_matches_timeline_across_server_move_and_presence(tmp_
     runtime=NS(config=NS(selected_realm_id='35868436'),names=None,view=NS(activity=None))
     board=await LeaderboardController(bot,runtime).load()
     _,_,groups,_=await DailyController(bot,runtime).report(day)
-    daily={x:sum((end-start).total_seconds() for start,end in spans) for x,spans in groups.items()}
-    assert dict(board[0])==daily=={'123456':10800,'654321':3570,'789123':30}
+    daily=groups.credits
+    assert dict(board[0])==daily=={'123456':5400,'654321':1785,'789123':30}
     assert board[2]==lo+timedelta(hours=4,seconds=30)
