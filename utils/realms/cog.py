@@ -540,7 +540,7 @@ class RealmCommands(commands.Cog):
         await interaction.response.defer(ephemeral=True, thinking=True)
         from .daily import DailyUnavailable
         try:
-            result = await self.daily_reports.refresh(preview=preview, day=day)
+            result = await self.daily_reports.refresh(preview=preview, day=day, replace_missing=not preview)
         except DailyUnavailable as error:
             await interaction.followup.send(str(error), ephemeral=True, allowed_mentions=discord.AllowedMentions.none())
             return

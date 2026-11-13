@@ -218,11 +218,11 @@ class DailyController:
         signature = hashlib.sha256(json.dumps(content, sort_keys=True).encode()).hexdigest()
         return embed, signature, groups, names
 
-    async def publish(self, day):
+    async def publish(self, day, *, replace_missing=False):
         async with asyncio.timeout(480):
-            return await self._publish(day)
+            return await self._publish(day, replace_missing=replace_missing)
 
-    async def _publish(self, day):
+    async def _publish(self, day, *, replace_missing=False):
         config = self.bot.settings['realm_daily']
         guild, channel_id, realm = self.bot.settings['Coastal'], config['channel_id'], self.runtime.config.selected_realm_id
         now = utcnow()
@@ -235,15 +235,25 @@ class DailyController:
         if row is None:
             return False
         try:
-            channel = self.bot.get_channel(channel_id) or await self.bot.fetch_channel(channel_id)
+            try:
+                channel = self.bot.get_channel(channel_id) or await self.bot.fetch_channel(channel_id)
+            except discord.NotFound:
+                raise DailyUnavailable('The configured daily report channel was not found. Set an existing channel with /realm daily channel, then retry.') from None
             if getattr(getattr(channel, 'guild', None), 'id', None) != guild:
                 raise ValueError('Wrong daily report guild')
             marker = 'realm-daily:' + hashlib.sha256(f'{guild}:{channel_id}:{realm}:{day}'.encode()).hexdigest()[:24]
             message = None
             if row.message:
-                # A deleted original needs staff intervention; never silently republish.
-                message = await channel.fetch_message(row.message)
-                if message.author.id != self.bot.user.id or not matches_report(message, marker):
+                try:
+                    message = await channel.fetch_message(row.message)
+                except discord.NotFound as error:
+                    if error.code != 10008:  # Only Unknown Message proves deletion.
+                        raise DailyUnavailable('Discord could not find the report channel or message. Check the configured channel and access; the saved checkpoint was preserved.') from None
+                    if not replace_missing:
+                        raise DailyUnavailable('The original daily report message was deleted. An OP Team member can recreate it with /realm daily history and publish:true for this date. Private preview still works.') from None
+                    # An explicit staff publish may replace a confirmed deleted post.
+                    # The new send still uses the normal durable pending checkpoint.
+                if message is not None and (message.author.id != self.bot.user.id or not matches_report(message, marker)):
                     raise ValueError('Daily report identity mismatch')
             elif row.pending_since:
                 if now < row.pending_since+timedelta(minutes=5):
@@ -264,7 +274,7 @@ class DailyController:
                 if message:
                     await message.edit(content=None, embeds=[], attachments=[attachment], allowed_mentions=discord.AllowedMentions.none())
                 else:
-                    await database(lambda: DailyReport.update(pending_since=utcnow()).where(DailyReport.id == row.id).execute())
+                    await database(lambda: DailyReport.update(message=None, signature="", pending_since=utcnow()).where(DailyReport.id == row.id).execute())
                     message = await channel.send(file=attachment, allowed_mentions=discord.AllowedMentions.none())
             finally:
                 attachment.close()
@@ -274,7 +284,7 @@ class DailyController:
         finally:
             await database(lambda: DailyReport.update(lease=None).where(DailyReport.id == row.id).execute())
 
-    async def refresh(self, *, preview=False, day=None):
+    async def refresh(self, *, preview=False, day=None, replace_missing=False):
         async with self.lock:
             if not preview and not self.enabled():
                 raise DailyUnavailable('Daily reports are disabled. Set /realm daily channel, then use /realm daily enable.')
@@ -310,9 +320,17 @@ class DailyController:
                     png = await asyncio.to_thread(render, day, groups, names, embed.timestamp)
                     return embed, png
                 stage = 'Discord delivery'
+                if replace_missing:
+                    return await self.publish(day, replace_missing=True)
                 return await self.publish(day)
             except DailyUnavailable:
                 raise
+            except discord.NotFound as error:
+                log.warning('Daily report failed at %s (NotFound code=%s)', stage, error.code)
+                raise DailyUnavailable('Discord could not find the report message or channel. Check the configured channel, or use /realm daily history without publish for a private preview. The delivery checkpoint was preserved.') from None
+            except discord.Forbidden:
+                log.warning('Daily report failed at %s (Forbidden)', stage)
+                raise DailyUnavailable('Discord denied access to the daily report channel or message. Check View Channel, Read Message History, Send Messages, and Attach Files permissions. The delivery checkpoint was preserved.') from None
             except ModuleNotFoundError as error:
                 log.warning('Daily report failed at %s (%s)', stage, type(error).__name__)
                 if error.name == 'PIL':

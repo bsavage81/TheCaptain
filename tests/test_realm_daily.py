@@ -335,3 +335,106 @@ def test_future_interval_verification_uses_fresh_presence():
     assert verify_future_intervals(history,view,now) == {'123456':'online','654321':'offline'}
     assert set(verify_future_intervals(history,view,now+timedelta(seconds=46)).values()) == {'unknown'}
     assert set(verify_future_intervals(history,Observation(activity=activity),now).values()) == {'unknown'}
+
+
+@pytest.mark.asyncio
+async def test_deleted_daily_message_requires_manual_publish_and_recovers_uncertain_send(tmp_path, monkeypatch):
+    from utils.realms.daily import DailyUnavailable
+    backend = SqliteDatabase(tmp_path/'deleted-report.sqlite')
+    activity_migrate(backend,apply=True,backup_verified=True)
+    migrate(backend,apply=True,backup_verified=True)
+    day=date(2026,10,31)
+    with backend.connection_context():
+        DailyReport.create(guild=1,channel=2,realm='3',day=day,message=42,signature='old')
+    messages=[]
+    class Channel:
+        guild=NS(id=1)
+        async def fetch_message(self, identity):
+            if identity==42:
+                raise discord.NotFound(NS(status=404,reason='Not Found'), {'code':10008,'message':'Unknown Message'})
+            return next(m for m in messages if m.id==identity)
+        async def send(self, **kwargs):
+            message=NS(id=100,author=NS(id=99),embeds=[],
+                attachments=[NS(filename=kwargs['file'].filename)],edit=AsyncMock())
+            messages.append(message)
+            raise TimeoutError('accepted but response lost')
+        async def history(self, **kwargs):
+            for message in messages:
+                yield message
+    channel=Channel()
+    bot=NS(settings={'Coastal':1,'realm_daily':{'enabled':True,'channel_id':2}},
+           user=NS(id=99),get_channel=lambda _:channel)
+    controller=DailyController(bot,NS(config=NS(selected_realm_id='3')))
+    controller.report=AsyncMock(return_value=(discord.Embed(), 'new', {}, {}))
+    monkeypatch.setattr('utils.realms.daily.render',lambda *args:b'png')
+    with pytest.raises(DailyUnavailable,match='original daily report message was deleted'):
+        await controller.publish(day)
+    with backend.connection_context():
+        assert DailyReport.get().message==42 and DailyReport.get().lease is None
+    assert not messages
+    with pytest.raises(TimeoutError):
+        await controller.publish(day,replace_missing=True)
+    with backend.connection_context():
+        row=DailyReport.get()
+        assert row.message is None and row.pending_since is not None and row.lease is None
+        DailyReport.update(pending_since=row.pending_since-timedelta(minutes=6)).execute()
+    assert await controller.publish(day,replace_missing=True)
+    assert await controller.publish(day)
+    assert len(messages)==1
+    with backend.connection_context():
+        assert DailyReport.get().message==100 and DailyReport.get().signature=='new'
+        assert DailyReport.get().pending_since is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('code',[10003,0])
+async def test_other_not_found_errors_never_clear_message_or_republish(tmp_path, code):
+    from utils.realms.daily import DailyUnavailable
+    backend=SqliteDatabase(tmp_path/f'not-found-{code}.sqlite')
+    activity_migrate(backend,apply=True,backup_verified=True)
+    migrate(backend,apply=True,backup_verified=True)
+    day=date(2026,10,31)
+    with backend.connection_context():
+        DailyReport.create(guild=1,channel=2,realm='3',day=day,message=42,signature='old')
+    channel=NS(guild=NS(id=1),send=AsyncMock(),fetch_message=AsyncMock(side_effect=
+        discord.NotFound(NS(status=404,reason='Not Found'),{'code':code,'message':'Not Found'})))
+    bot=NS(settings={'Coastal':1,'realm_daily':{'enabled':True,'channel_id':2}},get_channel=lambda _:channel)
+    controller=DailyController(bot,NS(config=NS(selected_realm_id='3')))
+    with pytest.raises(DailyUnavailable,match='checkpoint was preserved'):
+        await controller.publish(day,replace_missing=True)
+    channel.send.assert_not_awaited()
+    with backend.connection_context():
+        assert DailyReport.get().message==42 and DailyReport.get().signature=='old'
+        assert DailyReport.get().lease is None
+
+
+@pytest.mark.asyncio
+async def test_missing_report_channel_is_actionable_and_preserves_checkpoint(tmp_path):
+    from utils.realms.daily import DailyUnavailable
+    backend=SqliteDatabase(tmp_path/'missing-channel.sqlite')
+    activity_migrate(backend,apply=True,backup_verified=True)
+    migrate(backend,apply=True,backup_verified=True)
+    bot=NS(settings={'Coastal':1,'realm_daily':{'enabled':True,'channel_id':2}},
+        get_channel=lambda _:None,fetch_channel=AsyncMock(side_effect=
+            discord.NotFound(NS(status=404,reason='Not Found'),{'code':10003,'message':'Unknown Channel'})))
+    controller=DailyController(bot,NS(config=NS(selected_realm_id='3')))
+    with pytest.raises(DailyUnavailable,match='configured daily report channel was not found'):
+        await controller.publish(date(2026,10,31),replace_missing=True)
+    with backend.connection_context():
+        assert DailyReport.get().message is None and DailyReport.get().pending_since is None
+        assert DailyReport.get().lease is None
+
+
+@pytest.mark.asyncio
+async def test_staff_publish_requests_deleted_message_recovery_but_preview_does_not():
+    from test_realms_discord import settings, interaction
+    from utils.realms.cog import RealmCommands
+    day=date(2026,10,31)
+    reports=NS(refresh=AsyncMock(return_value=True))
+    cog=NS(bot=NS(settings=settings()),daily_reports=reports)
+    await RealmCommands.daily_response(cog,interaction(),preview=False,day=day)
+    reports.refresh.assert_awaited_once_with(preview=False,day=day,replace_missing=True)
+    reports.refresh.reset_mock()
+    reports.refresh.return_value=(discord.Embed(),b'png')
+    await RealmCommands.daily_response(cog,interaction(),preview=True,day=day)
+    reports.refresh.assert_awaited_once_with(preview=True,day=day,replace_missing=False)

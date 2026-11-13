@@ -60,3 +60,24 @@ with the new code to recalculate leaderboard views through the existing refresh
 flow. Previously published/finalized daily images need a fresh report/preview to
 show the new credited totals. The policy is a credit convention, not a claim that
 API-only sessions lasted exactly half of their returned span.
+
+## Deleted daily-report message recovery
+
+A `NotFound` during Discord delivery can mean that a saved report message or its
+channel no longer exists. Daily publishing now distinguishes a confirmed Unknown
+Message (Discord code 10008) from other failures. Scheduled updates preserve the
+saved checkpoint and do not automatically repost deleted messages. An explicit
+staff publish, such as `/realm daily history day:2026-10-31 publish:true`, can
+replace that confirmed deleted message in the configured report channel.
+
+Replacement uses the normal lease and pending-send checkpoint. If Discord accepts
+a replacement but the response is lost, the settling period/history scan recovers
+it rather than creating another post. Missing channels, permission failures,
+unknown 404 codes and message-identity mismatches never authorize replacement.
+Errors now explain the relevant channel or checkpoint problem instead of only
+reporting the Discord delivery stage.
+
+`/realm daily history day:2026-10-31` without publish remains a private preview
+and does not read, edit or replace a saved Discord message. No activity records
+are changed by delivery recovery. Deploy and restart; no migration or command
+sync is required because existing command arguments are unchanged.
